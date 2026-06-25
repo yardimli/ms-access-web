@@ -66,6 +66,7 @@ const objectPane = document.querySelector('#object-pane');
 
 let databasePromise = null;
 let currentView = app.dataset.initialView || 'table-customers';
+let openTabs = [];
 
 const tableViewPairs = {
     'table-customers': 'design-customers',
@@ -195,13 +196,53 @@ function setActiveObject(view) {
     });
 }
 
-function renderDocumentTab(title) {
-    tabs.innerHTML = `<button class="doc-tab">${escapeHtml(title)}</button><button class="doc-close ml-auto mr-2 self-center" title="Close tab"><i class="fas fa-times"></i></button>`;
+function findTabIndex(view) {
+    return openTabs.findIndex(tab => tab.view === view);
 }
 
-async function loadView(view) {
+function findOpenObjectTab(view) {
+    const objectView = designViewPairs[view] || view;
+    return openTabs.find(tab => tab.view === objectView || designViewPairs[tab.view] === objectView);
+}
+
+function renderDocumentTabs() {
+    if (!openTabs.length) {
+        tabs.innerHTML = '';
+        return;
+    }
+
+    tabs.innerHTML = `
+        <div class="doc-tab-strip">
+            ${openTabs.map(tab => `
+                <button class="doc-tab ${tab.view === currentView ? 'active' : ''}" data-tab-view="${escapeHtml(tab.view)}">
+                    ${escapeHtml(tab.title)}
+                </button>
+            `).join('')}
+        </div>
+        <button class="doc-close ml-auto mr-2 self-center" title="Close active tab"><i class="fas fa-times"></i></button>
+    `;
+}
+
+async function loadView(view, options = {}) {
+    const existingIndex = findTabIndex(view);
+    const replaceActive = options.replaceActive === true;
+
+    if (replaceActive && openTabs.length) {
+        const activeIndex = Math.max(0, findTabIndex(currentView));
+        openTabs[activeIndex] = {
+            view,
+            title: viewTitles[view] || 'Object'
+        };
+    } else if (existingIndex === -1) {
+        openTabs.push({
+            view,
+            title: viewTitles[view] || 'Object'
+        });
+    }
+
     currentView = view;
     content.innerHTML = '<div class="p-6 text-neutral-500">Loading...</div>';
+    renderDocumentTabs();
     const response = await fetch(`partial.php?view=${encodeURIComponent(view)}`, {
         headers: { 'X-Requested-With': 'XMLHttpRequest' }
     });
@@ -214,10 +255,35 @@ async function loadView(view) {
     content.innerHTML = await response.text();
     const shell = content.querySelector('.view-shell');
     const title = shell?.dataset.title || viewTitles[view] || 'Object';
-    renderDocumentTab(title);
+    const activeTab = openTabs[findTabIndex(view)];
+    if (activeTab) {
+        activeTab.title = title;
+    }
+    renderDocumentTabs();
     status.textContent = shell?.dataset.status || 'Ready';
     setActiveObject(view);
     await initCurrentView();
+}
+
+function closeActiveTab() {
+    const activeIndex = findTabIndex(currentView);
+    if (activeIndex === -1) {
+        return;
+    }
+
+    openTabs.splice(activeIndex, 1);
+
+    if (!openTabs.length) {
+        currentView = '';
+        content.innerHTML = '<div class="p-6 text-neutral-500">Double-click an object to open it.</div>';
+        status.textContent = 'Ready';
+        renderDocumentTabs();
+        setActiveObject('');
+        return;
+    }
+
+    const nextTab = openTabs[Math.max(0, activeIndex - 1)];
+    loadView(nextTab.view);
 }
 
 function switchTableMode(mode) {
@@ -225,7 +291,7 @@ function switchTableMode(mode) {
         ? tableViewPairs[currentView] || currentView
         : designViewPairs[currentView] || currentView;
 
-    loadView(target);
+    loadView(target, { replaceActive: true });
 }
 
 async function initCurrentView() {
@@ -825,6 +891,18 @@ function initQueryBuilders(db) {
 }
 
 document.addEventListener('click', event => {
+    const docClose = event.target.closest('.doc-close');
+    if (docClose) {
+        closeActiveTab();
+        return;
+    }
+
+    const docTab = event.target.closest('[data-tab-view]');
+    if (docTab) {
+        loadView(docTab.dataset.tabView);
+        return;
+    }
+
     const paneToggle = event.target.closest('#object-pane-toggle');
     if (paneToggle) {
         const isCollapsed = objectPane.classList.toggle('collapsed');
@@ -853,6 +931,15 @@ document.addEventListener('click', event => {
 
     const viewButton = event.target.closest('[data-view]');
     if (viewButton) {
+        if (viewButton.closest('#object-list')) {
+            const openTab = findOpenObjectTab(viewButton.dataset.view);
+            setActiveObject(viewButton.dataset.view);
+            if (openTab) {
+                loadView(openTab.view);
+            }
+            return;
+        }
+
         if (viewButton.dataset.view === '@design') {
             switchTableMode('design');
             return;
@@ -865,6 +952,15 @@ document.addEventListener('click', event => {
 
         loadView(viewButton.dataset.view);
     }
+});
+
+document.addEventListener('dblclick', event => {
+    const objectLink = event.target.closest('#object-list [data-view]');
+    if (!objectLink) {
+        return;
+    }
+
+    loadView(objectLink.dataset.view);
 });
 
 activateRibbonTab('home');

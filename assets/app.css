@@ -724,10 +724,28 @@ html, body {
     min-width: 96px;
     border: 1px solid #aeb7c1;
     border-bottom: 0;
-    background: white;
+    background: #edf1f5;
     padding: 4px 10px;
-    color: #a92f35;
+    color: #7b3337;
     font-weight: 600;
+}
+
+.doc-tab-strip {
+    display: flex;
+    min-width: 0;
+    max-width: calc(100% - 40px);
+    align-items: end;
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+
+.doc-tab.active {
+    background: white;
+    color: #a92f35;
+}
+
+.doc-tab:hover {
+    background: #fff7f8;
 }
 
 .view-shell {
@@ -1093,7 +1111,7 @@ html, body {
 }
 
 .access-form {
-    margin: 28px auto;
+    margin: 0 auto;
     width: min(980px, calc(100% - 48px));
     border: 1px solid #7d91a7;
     background: #edf3f8;
