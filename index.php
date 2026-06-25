@@ -11,8 +11,8 @@ $initialView = $_GET['view'] ?? 'table-customers';
     <link rel="stylesheet" href="vendor/fontawesome/css/all.min.css">
     <link rel="stylesheet" href="assets/app.css">
 </head>
-<body class="h-screen overflow-hidden bg-[#0078d7] text-[13px] text-neutral-900">
-    <div id="access-app" class="mx-auto flex h-screen max-w-[1440px] flex-col border border-[#6f1f25] bg-white shadow-2xl" data-initial-view="<?= htmlspecialchars($initialView, ENT_QUOTES) ?>">
+<body class="h-screen w-screen overflow-hidden bg-white text-[13px] text-neutral-900">
+    <div id="access-app" class="flex h-screen w-screen flex-col bg-white" data-initial-view="<?= htmlspecialchars($initialView, ENT_QUOTES) ?>">
         <header class="select-none">
             <div class="flex h-8 items-center bg-[#a92f35] text-white">
                 <div class="flex h-full w-[168px] items-center gap-2 px-3">
@@ -21,7 +21,7 @@ $initialView = $_GET['view'] ?? 'table-customers';
                     <button class="quick-btn opacity-50" title="Redo"><i class="fas fa-redo"></i></button>
                     <button class="quick-btn" title="Customize"><i class="fas fa-caret-down"></i></button>
                 </div>
-                <div class="flex h-full items-center border-x border-white/10 px-7 text-[11px]">Table Tools</div>
+                <div id="contextual-tools-label" class="contextual-tools-label hidden">Table Tools</div>
                 <div class="flex-1 truncate text-center text-xs">Database1 : Database - C:\Users\Demo\Desktop\Database1.accdb (Access Web)</div>
                 <div class="flex h-full items-center gap-5 px-4">
                     <span class="text-xs">Lisa Washington</span>
@@ -32,14 +32,18 @@ $initialView = $_GET['view'] ?? 'table-customers';
             </div>
 
             <div class="flex h-11 items-end bg-[#a92f35] text-white">
-                <nav class="flex h-full items-end">
+                <nav class="flex h-full items-end" id="standard-ribbon-tabs">
                     <button class="ribbon-tab px-5" data-ribbon="file">File</button>
                     <button class="ribbon-tab active px-5" data-ribbon="home">Home</button>
                     <button class="ribbon-tab px-5" data-ribbon="create">Create</button>
                     <button class="ribbon-tab px-5" data-ribbon="external">External Data</button>
                     <button class="ribbon-tab px-5" data-ribbon="database">Database Tools</button>
-                    <button class="ribbon-tab px-5" data-ribbon="fields">Fields</button>
-                    <button class="ribbon-tab px-5" data-ribbon="table">Table</button>
+                    <button class="ribbon-tab px-5" data-ribbon="help">Help</button>
+                </nav>
+                <nav class="contextual-ribbon-tabs hidden" id="table-tools-tabs" aria-label="Table Tools">
+                    <button class="ribbon-tab table-context-tab px-5 hidden" data-ribbon="table-design" data-table-context="design">Design</button>
+                    <button class="ribbon-tab table-context-tab px-5 hidden" data-ribbon="fields" data-table-context="datasheet">Fields</button>
+                    <button class="ribbon-tab table-context-tab px-5 hidden" data-ribbon="table" data-table-context="datasheet">Table</button>
                 </nav>
                 <div class="mb-3 ml-3 flex min-w-[260px] items-center gap-2 text-white/95">
                     <span class="text-lg leading-none">?</span>
@@ -64,29 +68,7 @@ $initialView = $_GET['view'] ?? 'table-customers';
                     </label>
                 </div>
                 <nav class="min-h-0 flex-1 overflow-auto p-2" id="object-list">
-                    <div class="object-section">
-                        <div class="object-heading"><span>Tables</span><button class="object-toggle" type="button" aria-label="Collapse Tables" aria-expanded="true"><i class="fas fa-chevron-up"></i></button></div>
-                        <button class="object-link active" data-view="table-customers"><i class="fas fa-table table-icon"></i>Customers</button>
-                        <button class="object-link" data-view="table-orders"><i class="fas fa-table table-icon"></i>Orders</button>
-                        <button class="object-link" data-view="table-order-items"><i class="fas fa-table table-icon"></i>OrderItems</button>
-                        <button class="object-link" data-view="table-products"><i class="fas fa-table table-icon"></i>Products</button>
-                        <button class="object-link" data-view="table-regions"><i class="fas fa-table table-icon"></i>Regions</button>
-                        <button class="object-link" data-view="table-sales-targets"><i class="fas fa-table table-icon"></i>SalesTargets</button>
-                    </div>
-                    <div class="object-section">
-                        <div class="object-heading"><span>Forms</span><button class="object-toggle" type="button" aria-label="Collapse Forms" aria-expanded="true"><i class="fas fa-chevron-up"></i></button></div>
-                        <button class="object-link" data-view="form-customer-orders"><i class="fas fa-window-restore form-icon"></i>CustomerOrders</button>
-                        <button class="object-link" data-view="form-invoice-entry"><i class="fas fa-window-restore form-icon"></i>InvoiceEntry</button>
-                    </div>
-                    <div class="object-section">
-                        <div class="object-heading"><span>Queries</span><button class="object-toggle" type="button" aria-label="Collapse Queries" aria-expanded="true"><i class="fas fa-chevron-up"></i></button></div>
-                        <button class="object-link" data-view="query-open-orders"><i class="fas fa-project-diagram query-icon"></i>OpenOrders</button>
-                        <button class="object-link" data-view="query-sales-region"><i class="fas fa-project-diagram query-icon"></i>SalesByRegion</button>
-                    </div>
-                    <div class="object-section">
-                        <div class="object-heading"><span>Reports</span><button class="object-toggle" type="button" aria-label="Collapse Reports" aria-expanded="true"><i class="fas fa-chevron-up"></i></button></div>
-                        <button class="object-link" data-view="report"><i class="fas fa-file-alt report-icon"></i>InvoiceSummary</button>
-                    </div>
+                    <div class="p-2 text-neutral-500">Loading database objects...</div>
                 </nav>
             </aside>
 

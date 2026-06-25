@@ -17,7 +17,6 @@ $title = $context['title'] ?? $query;
 
         <div class="query-bottom">
             <div data-query-grid></div>
-            <div class="query-sql" data-query-sql></div>
         </div>
     </div>
 </div>

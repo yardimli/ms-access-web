@@ -22,16 +22,31 @@ const ribbons = {
     ],
     fields: [
         ['Views', [['grid', 'View', '@datasheet'], ['design', 'Design View', '@design']]],
-        ['Add & Delete', [['text-field', 'Short Text'], ['number', 'Number'], ['currency', 'Currency'], ['delete', 'Delete']]],
-        ['Properties', [['caption', 'Name & Caption'], ['required', 'Required'], ['validation', 'Validation']]]
+        ['Add & Delete', [['text-field', 'Short Text'], ['number', 'Number'], ['currency', 'Currency'], ['date', 'Date & Time'], ['yes-no', 'Yes/No'], ['more-fields', 'More Fields'], ['delete', 'Delete']]],
+        ['Properties', [['caption', 'Name & Caption'], ['default', 'Default Value'], ['field-size', 'Field Size'], ['lookup', 'Modify Lookups'], ['expression', 'Modify Expression'], ['memo', 'Memo Settings']]],
+        ['Formatting', [['data-type', 'Data Type: AutoNumber'], ['format', 'Format: Formatting'], ['currency-symbol', '$'], ['percent', '%'], ['comma', ','], ['decimal-less', '.00 -> .0'], ['decimal-more', '.0 -> .00']]],
+        ['Field Validation', [['required', 'Required'], ['unique', 'Unique'], ['indexed', 'Indexed'], ['validation', 'Validation']]]
     ],
     table: [
+        ['Properties', [['properties', 'Table Properties']]],
+        ['Before Events', [['before-change', 'Before Change'], ['before-delete', 'Before Delete']]],
+        ['After Events', [['after-insert', 'After Insert'], ['after-update', 'After Update'], ['after-delete', 'After Delete']]],
+        ['Named Macros', [['macro', 'Named Macro']]],
+        ['Relationships', [['relationships', 'Relationships'], ['deps', 'Object Dependencies']]]
+    ],
+    'table-design': [
+        ['Views', [['grid', 'View', '@datasheet']]],
+        ['Tools', [['primary-key', 'Primary Key'], ['builder', 'Builder'], ['test-validation', 'Test Validation Rules']]],
+        ['Rows', [['insert-row', 'Insert Rows'], ['delete', 'Delete Rows'], ['lookup', 'Modify Lookups']]],
         ['Show/Hide', [['properties', 'Property Sheet'], ['index', 'Indexes']]],
-        ['Events', [['macro', 'Create Data Macros'], ['rename', 'Rename/Delete Macro']]],
+        ['Field, Record & Table Events', [['macro', 'Create Data Macros'], ['rename', 'Rename/Delete Macro']]],
         ['Relationships', [['relationships', 'Relationships'], ['deps', 'Object Dependencies']]]
     ],
     file: [
         ['Backstage', [['save', 'Save'], ['save-as', 'Save As'], ['print', 'Print'], ['options', 'Options']]]
+    ],
+    help: [
+        ['Help', [['find', 'Search Help'], ['options', 'Access Options'], ['secure', 'Privacy']]]
     ]
 };
 
@@ -51,6 +66,8 @@ const viewTitles = {
     'table-detail': 'Customers',
     'form-customer-orders': 'CustomerOrders',
     'form-invoice-entry': 'InvoiceEntry',
+    'design-form-customer-orders': 'CustomerOrders',
+    'design-form-invoice-entry': 'InvoiceEntry',
     'query-open-orders': 'OpenOrders',
     'query-sales-region': 'SalesByRegion',
     report: 'InvoiceSummary'
@@ -63,21 +80,65 @@ const status = document.querySelector('#view-status');
 const app = document.querySelector('#access-app');
 const workspaceMain = document.querySelector('#workspace-main');
 const objectPane = document.querySelector('#object-pane');
+const contextualToolsLabel = document.querySelector('#contextual-tools-label');
+const tableToolsTabs = document.querySelector('#table-tools-tabs');
+const objectList = document.querySelector('#object-list');
 
 let databasePromise = null;
 let currentView = app.dataset.initialView || 'table-customers';
 let openTabs = [];
+let currentRibbon = 'home';
+let moreFieldsMenu = null;
 
-const tableViewPairs = {
-    'table-customers': 'design-customers',
-    'table-orders': 'design-orders',
-    'table-order-items': 'design-order-items',
-    'table-products': 'design-products',
-    'table-regions': 'design-regions',
-    'table-sales-targets': 'design-sales-targets'
-};
+const moreFieldsGroups = [
+    ['Basic Types', [
+        ['rich-text', 'Rich Text'],
+        ['attachment', 'Attachment'],
+        ['hyperlink', 'Hyperlink'],
+        ['long-text', 'Long Text'],
+        ['lookup', 'Lookup & Relationship']
+    ]],
+    ['Number', [
+        ['number', 'General'],
+        ['currency', 'Currency'],
+        ['euro', 'Euro'],
+        ['number', 'Fixed'],
+        ['number', 'Standard'],
+        ['scientific', 'Scientific']
+    ]],
+    ['Large Number', [
+        ['number', 'General'],
+        ['number', 'Fixed'],
+        ['number', 'Standard'],
+        ['scientific', 'Scientific']
+    ]],
+    ['Date and Time', [
+        ['short-date', 'Short Date'],
+        ['short-date', 'Medium Date'],
+        ['short-date', 'Long Date'],
+        ['time', 'Time am/pm'],
+        ['time', 'Medium Time'],
+        ['time', 'Time 24hour']
+    ]],
+    ['Yes/No', [
+        ['checkbox', 'Check Box'],
+        ['checkbox', 'Yes/No'],
+        ['checkbox', 'True/False'],
+        ['checkbox', 'On/Off']
+    ]],
+    ['Quick Start', [
+        ['quick-start', 'Address'],
+        ['quick-start', 'Category'],
+        ['quick-start', 'Name'],
+        ['calculated', 'Calculated Field'],
+        ['save-as', 'Save Selection as New Data Type']
+    ]]
+];
 
-const designViewPairs = Object.fromEntries(Object.entries(tableViewPairs).map(([table, design]) => [design, table]));
+let tableViewPairs = {};
+let designViewPairs = {};
+let formViewPairs = {};
+let formDesignViewPairs = {};
 
 function escapeHtml(value) {
     return String(value ?? '').replace(/[&<>"']/g, char => ({
@@ -87,6 +148,18 @@ function escapeHtml(value) {
         '"': '&quot;',
         "'": '&#039;'
     }[char]));
+}
+
+function objectSlug(name) {
+    return String(name ?? '')
+        .replace(/(?!^)([A-Z])/g, '-$1')
+        .replace(/[^A-Za-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .toLowerCase();
+}
+
+function titleFromObjectName(name) {
+    return String(name ?? '').replace(/(?!^)([A-Z])/g, ' $1').replace(/_/g, ' ');
 }
 
 function formatValue(value, type) {
@@ -103,15 +176,153 @@ function formatValue(value, type) {
 
 function getDatabase() {
     if (!databasePromise) {
-        databasePromise = fetch('data/database.json', { cache: 'no-store' }).then(response => {
+        databasePromise = fetch('api/database.php', { cache: 'no-store' }).then(response => {
             if (!response.ok) {
-                throw new Error('Unable to load database.json');
+                throw new Error('Unable to load database from MariaDB');
             }
             return response.json();
-        });
+        }).then(data => normalizeDatabaseReferences(data));
     }
 
     return databasePromise;
+}
+
+function resolveTableName(db, tableName) {
+    const tables = db.tables || {};
+    if (tables[tableName]) {
+        return tableName;
+    }
+
+    const lower = String(tableName || '').toLowerCase();
+    return Object.keys(tables).find(name => name.toLowerCase() === lower) || tableName;
+}
+
+function normalizeFieldRef(db, ref) {
+    const [tableName, fieldName] = String(ref || '').split('.');
+    if (!tableName || !fieldName) {
+        return ref;
+    }
+
+    return `${resolveTableName(db, tableName)}.${fieldName}`;
+}
+
+function normalizeDatabaseReferences(db) {
+    Object.values(db.forms || {}).forEach(form => {
+        form.parentTable = resolveTableName(db, form.parentTable);
+        if (form.subform?.table) {
+            form.subform.table = resolveTableName(db, form.subform.table);
+        }
+    });
+
+    Object.values(db.queries || {}).forEach(query => {
+        query.tables = (query.tables || []).map(table => resolveTableName(db, table));
+        query.connections = (query.connections || []).map(connection => ({
+            ...connection,
+            from: normalizeFieldRef(db, connection.from),
+            to: normalizeFieldRef(db, connection.to)
+        }));
+        query.fields = (query.fields || []).map(field => ({
+            ...field,
+            table: resolveTableName(db, field.table)
+        }));
+    });
+
+    return db;
+}
+
+function getDefinitionByName(collection, name) {
+    if (!collection) {
+        return null;
+    }
+
+    if (collection[name]) {
+        return collection[name];
+    }
+
+    const lower = String(name || '').toLowerCase();
+    const key = Object.keys(collection).find(item => item.toLowerCase() === lower);
+    return key ? collection[key] : null;
+}
+
+function registerView(view, title) {
+    viewTitles[view] = title;
+}
+
+function configureObjectMaps(db) {
+    tableViewPairs = {};
+    designViewPairs = {};
+    formViewPairs = {};
+    formDesignViewPairs = {};
+
+    Object.keys(db.tables || {}).forEach(tableName => {
+        const slug = objectSlug(tableName);
+        const tableView = `table-${slug}`;
+        const designView = `design-${slug}`;
+        tableViewPairs[tableView] = designView;
+        designViewPairs[designView] = tableView;
+        registerView(tableView, tableName);
+        registerView(designView, tableName);
+    });
+
+    Object.keys(db.forms || {}).forEach(formName => {
+        const slug = objectSlug(formName);
+        const formView = `form-${slug}`;
+        const designView = `design-form-${slug}`;
+        formViewPairs[formView] = designView;
+        formDesignViewPairs[designView] = formView;
+        registerView(formView, formName);
+        registerView(designView, formName);
+    });
+
+    Object.keys(db.queries || {}).forEach(queryName => {
+        registerView(`query-${objectSlug(queryName)}`, queryName);
+    });
+
+    Object.keys(db.reports || {}).forEach(reportName => {
+        registerView(`report-${objectSlug(reportName)}`, reportName);
+    });
+}
+
+function objectSectionMarkup(title, items, iconClass, iconTypeClass) {
+    return `
+        <div class="object-section">
+            <div class="object-heading">
+                <span>${escapeHtml(title)}</span>
+                <button class="object-toggle" type="button" aria-label="Collapse ${escapeHtml(title)}" aria-expanded="true"><i class="fas fa-chevron-up"></i></button>
+            </div>
+            ${items.map(item => `
+                <button class="object-link" data-view="${escapeHtml(item.view)}">
+                    <i class="${iconClass} ${iconTypeClass}"></i>${escapeHtml(item.label)}
+                </button>
+            `).join('')}
+        </div>
+    `;
+}
+
+function renderObjectList(db) {
+    const tables = Object.keys(db.tables || {}).map(tableName => ({
+        view: `table-${objectSlug(tableName)}`,
+        label: tableName
+    }));
+    const forms = Object.keys(db.forms || {}).map(formName => ({
+        view: `form-${objectSlug(formName)}`,
+        label: formName
+    }));
+    const queries = Object.keys(db.queries || {}).map(queryName => ({
+        view: `query-${objectSlug(queryName)}`,
+        label: queryName
+    }));
+    const reports = Object.keys(db.reports || {}).map(reportName => ({
+        view: `report-${objectSlug(reportName)}`,
+        label: reportName
+    }));
+
+    objectList.innerHTML = [
+        objectSectionMarkup('Tables', tables, 'fas fa-table', 'table-icon'),
+        objectSectionMarkup('Forms', forms, 'fas fa-window-restore', 'form-icon'),
+        objectSectionMarkup('Queries', queries, 'fas fa-project-diagram', 'query-icon'),
+        objectSectionMarkup('Reports', reports, 'fas fa-file-alt', 'report-icon')
+    ].join('');
 }
 
 function ribbonIcon(name) {
@@ -154,11 +365,48 @@ function ribbonIcon(name) {
         currency: 'fas fa-dollar-sign',
         caption: 'fas fa-heading',
         required: 'fas fa-exclamation-circle',
+        unique: 'fas fa-check',
         validation: 'fas fa-check-square',
+        default: 'fas fa-clipboard-list',
+        'field-size': 'fas fa-text-width',
+        date: 'fas fa-calendar-alt',
+        'yes-no': 'fas fa-check-square',
+        'more-fields': 'fas fa-list',
+        'rich-text': 'fas fa-italic',
+        attachment: 'fas fa-paperclip',
+        hyperlink: 'fas fa-globe',
+        'long-text': 'fas fa-font',
+        euro: 'fas fa-euro-sign',
+        scientific: 'fas fa-superscript',
+        'short-date': 'far fa-calendar-alt',
+        time: 'far fa-clock',
+        checkbox: 'far fa-check-square',
+        'quick-start': 'fas fa-magic',
+        calculated: 'fas fa-calculator',
+        expression: 'fas fa-function',
+        memo: 'fas fa-align-left',
+        'data-type': 'fas fa-list-alt',
+        format: 'fas fa-font',
+        'currency-symbol': 'fas fa-dollar-sign',
+        percent: 'fas fa-percent',
+        comma: 'fas fa-quote-right',
+        'decimal-less': 'fas fa-angle-left',
+        'decimal-more': 'fas fa-angle-right',
+        indexed: 'fas fa-check-square',
         properties: 'fas fa-list-alt',
         index: 'fas fa-bolt',
         macro: 'fas fa-bolt',
         rename: 'fas fa-i-cursor',
+        'before-change': 'fas fa-check',
+        'before-delete': 'fas fa-trash-alt',
+        'after-insert': 'fas fa-plus-square',
+        'after-update': 'fas fa-sync-alt',
+        'after-delete': 'fas fa-times-circle',
+        'primary-key': 'fas fa-key',
+        builder: 'fas fa-magic',
+        'test-validation': 'fas fa-clipboard-check',
+        'insert-row': 'fas fa-plus-square',
+        lookup: 'fas fa-search-plus',
         save: 'fas fa-save',
         'save-as': 'fas fa-save',
         print: 'fas fa-print',
@@ -168,12 +416,153 @@ function ribbonIcon(name) {
     return `<i class="${map[name] || map.more}" aria-hidden="true"></i>`;
 }
 
+function closeMoreFieldsMenu() {
+    moreFieldsMenu?.remove();
+    moreFieldsMenu = null;
+    document.querySelector('[data-command="more-fields"]')?.classList.remove('active');
+}
+
+function buildMoreFieldsMenu() {
+    return `
+        <div class="more-fields-scroll">
+            ${moreFieldsGroups.map(([group, items]) => `
+                <section class="more-fields-group">
+                    <h3>${escapeHtml(group)}</h3>
+                    ${items.map(([icon, label]) => `
+                        <button class="more-fields-item" type="button" data-more-field="${escapeHtml(label)}">
+                            <span class="more-fields-icon">${ribbonIcon(icon)}</span>
+                            <span>${escapeHtml(label)}</span>
+                            ${label === 'Calculated Field' ? '<i class="fas fa-caret-right more-fields-arrow"></i>' : ''}
+                        </button>
+                    `).join('')}
+                </section>
+            `).join('')}
+        </div>
+    `;
+}
+
+function openMoreFieldsMenu(button) {
+    if (moreFieldsMenu && moreFieldsMenu.dataset.owner === 'more-fields') {
+        closeMoreFieldsMenu();
+        return;
+    }
+
+    closeMoreFieldsMenu();
+    const box = button.getBoundingClientRect();
+    moreFieldsMenu = document.createElement('div');
+    moreFieldsMenu.className = 'more-fields-menu';
+    moreFieldsMenu.dataset.owner = 'more-fields';
+    moreFieldsMenu.innerHTML = buildMoreFieldsMenu();
+    document.body.appendChild(moreFieldsMenu);
+
+    const menuWidth = moreFieldsMenu.offsetWidth;
+    const left = Math.min(box.left, window.innerWidth - menuWidth - 8);
+    const top = box.bottom + 2;
+    moreFieldsMenu.style.left = `${Math.max(4, left)}px`;
+    moreFieldsMenu.style.top = `${top}px`;
+    moreFieldsMenu.style.maxHeight = `${Math.max(260, window.innerHeight - top - 8)}px`;
+    button.classList.add('active');
+}
+
+function ribbonMiniButton(icon, label, options = {}) {
+    const classes = ['fields-mini'];
+    if (options.disabled) classes.push('disabled');
+    if (options.checked) classes.push('checked');
+
+    return `
+        <button class="${classes.join(' ')}" type="button" data-command="${escapeHtml(icon)}" ${options.view ? `data-view="${options.view}"` : ''} ${options.disabled ? 'disabled' : ''}>
+            <span class="fields-mini-icon">${ribbonIcon(icon)}</span>
+            <span>${escapeHtml(label)}</span>
+            ${options.caret ? '<i class="fas fa-caret-down fields-caret"></i>' : ''}
+        </button>
+    `;
+}
+
+function ribbonBigButton(icon, label, options = {}) {
+    const classes = ['fields-big'];
+    if (options.disabled) classes.push('disabled');
+
+    return `
+        <button class="${classes.join(' ')}" type="button" data-command="${escapeHtml(icon)}" ${options.view ? `data-view="${options.view}"` : ''} ${options.disabled ? 'disabled' : ''}>
+            <span class="fields-big-icon">${ribbonIcon(icon)}</span>
+            <span>${escapeHtml(label)}</span>
+            ${options.caret ? '<i class="fas fa-caret-down fields-caret"></i>' : ''}
+        </button>
+    `;
+}
+
+function renderFieldsRibbon() {
+    ribbon.innerHTML = `
+        <div class="fields-ribbon">
+            <div class="fields-group fields-views" data-label="Views">
+                ${ribbonBigButton('design', 'View', { view: '@design', caret: true })}
+            </div>
+
+            <div class="fields-group fields-add-delete" data-label="Add & Delete">
+                ${ribbonBigButton('text-field', 'Short Text')}
+                ${ribbonBigButton('number', 'Number')}
+                ${ribbonBigButton('currency', 'Currency')}
+                <div class="fields-stack">
+                    ${ribbonMiniButton('date', 'Date & Time')}
+                    ${ribbonMiniButton('yes-no', 'Yes/No')}
+                    ${ribbonMiniButton('more-fields', 'More Fields', { caret: true })}
+                </div>
+                ${ribbonBigButton('delete', 'Delete')}
+            </div>
+
+            <div class="fields-group fields-properties" data-label="Properties">
+                <div class="fields-stack fields-wide-stack">
+                    ${ribbonMiniButton('caption', 'Name & Caption')}
+                    ${ribbonMiniButton('default', 'Default Value', { disabled: true })}
+                    <div class="fields-mini disabled">
+                        <span class="fields-mini-icon">${ribbonIcon('field-size')}</span>
+                        <span>Field Size</span>
+                        <span class="fields-small-input"></span>
+                    </div>
+                </div>
+                ${ribbonBigButton('lookup', 'Modify Lookups', { disabled: true })}
+                ${ribbonBigButton('expression', 'Modify Expression', { disabled: true })}
+                ${ribbonBigButton('memo', 'Memo Settings', { disabled: true, caret: true })}
+            </div>
+
+            <div class="fields-group fields-formatting" data-label="Formatting">
+                <div class="fields-format-controls">
+                    <label><span>Data Type:</span><select><option>AutoNumber</option></select></label>
+                    <label class="disabled"><span>Format:</span><select disabled><option>Formatting</option></select></label>
+                    <div class="fields-format-icons">
+                        <button type="button" disabled>${ribbonIcon('currency-symbol')}</button>
+                        <button type="button" disabled>${ribbonIcon('percent')}</button>
+                        <button type="button" disabled>${ribbonIcon('comma')}</button>
+                        <button type="button" disabled>${ribbonIcon('decimal-less')}</button>
+                        <button type="button" disabled>${ribbonIcon('decimal-more')}</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="fields-group fields-validation" data-label="Field Validation">
+                <div class="fields-stack fields-check-stack">
+                    ${ribbonMiniButton('required', 'Required', { disabled: true })}
+                    ${ribbonMiniButton('unique', 'Unique', { checked: true })}
+                    ${ribbonMiniButton('indexed', 'Indexed', { disabled: true })}
+                </div>
+                ${ribbonBigButton('validation', 'Validation', { caret: true })}
+            </div>
+        </div>
+    `;
+}
+
 function renderRibbon(name) {
+    closeMoreFieldsMenu();
+    if (name === 'fields') {
+        renderFieldsRibbon();
+        return;
+    }
+
     const groups = ribbons[name] || ribbons.home;
     ribbon.innerHTML = `<div class="ribbon-content">${groups.map(([label, commands]) => `
         <div class="ribbon-group" data-label="${label}">
             ${commands.map(([icon, text, view]) => `
-                <button class="ribbon-command" ${view ? `data-view="${view}"` : ''}>
+                <button class="ribbon-command" data-command="${escapeHtml(icon)}" ${view ? `data-view="${view}"` : ''}>
                     <span class="icon">${ribbonIcon(icon)}</span>
                     <span>${escapeHtml(text)}</span>
                 </button>
@@ -182,7 +571,45 @@ function renderRibbon(name) {
     `).join('')}</div>`;
 }
 
+function isTableDatasheetView(view) {
+    return Object.prototype.hasOwnProperty.call(tableViewPairs, view);
+}
+
+function isTableDesignView(view) {
+    return Object.prototype.hasOwnProperty.call(designViewPairs, view);
+}
+
+function updateContextualRibbon(view) {
+    const tableDatasheet = isTableDatasheetView(view);
+    const tableDesign = isTableDesignView(view);
+    const showTableTools = tableDatasheet || tableDesign;
+
+    contextualToolsLabel?.classList.toggle('hidden', !showTableTools);
+    tableToolsTabs?.classList.toggle('hidden', !showTableTools);
+    document.querySelectorAll('[data-table-context="datasheet"]').forEach(tab => {
+        tab.classList.toggle('hidden', !tableDatasheet);
+    });
+    document.querySelectorAll('[data-table-context="design"]').forEach(tab => {
+        tab.classList.toggle('hidden', !tableDesign);
+    });
+
+    if (tableDesign && currentRibbon !== 'table-design') {
+        activateRibbonTab('table-design');
+        return;
+    }
+
+    if (tableDatasheet && !['fields', 'table'].includes(currentRibbon)) {
+        activateRibbonTab('fields');
+        return;
+    }
+
+    if (!showTableTools && ['fields', 'table', 'table-design'].includes(currentRibbon)) {
+        activateRibbonTab('home');
+    }
+}
+
 function activateRibbonTab(name) {
+    currentRibbon = name;
     document.querySelectorAll('.ribbon-tab').forEach(tab => {
         tab.classList.toggle('active', tab.dataset.ribbon === name);
     });
@@ -190,7 +617,7 @@ function activateRibbonTab(name) {
 }
 
 function setActiveObject(view) {
-    const objectView = designViewPairs[view] || view;
+    const objectView = designViewPairs[view] || formDesignViewPairs[view] || view;
     document.querySelectorAll('.object-link').forEach(link => {
         link.classList.toggle('active', link.dataset.view === objectView);
     });
@@ -201,8 +628,28 @@ function findTabIndex(view) {
 }
 
 function findOpenObjectTab(view) {
-    const objectView = designViewPairs[view] || view;
-    return openTabs.find(tab => tab.view === objectView || designViewPairs[tab.view] === objectView);
+    const objectView = designViewPairs[view] || formDesignViewPairs[view] || view;
+    return openTabs.find(tab => tab.view === objectView || designViewPairs[tab.view] === objectView || formDesignViewPairs[tab.view] === objectView);
+}
+
+function getTabIcon(view) {
+    if (view.startsWith('table-') || view.startsWith('design-') && !view.startsWith('design-form-')) {
+        return 'fas fa-table tab-icon-table';
+    }
+
+    if (view.startsWith('form-') || view.startsWith('design-form-')) {
+        return 'fas fa-window-restore tab-icon-form';
+    }
+
+    if (view.startsWith('query-')) {
+        return 'fas fa-project-diagram tab-icon-query';
+    }
+
+    if (view === 'report' || view.startsWith('report-')) {
+        return 'fas fa-file-alt tab-icon-report';
+    }
+
+    return 'fas fa-file tab-icon-file';
 }
 
 function renderDocumentTabs() {
@@ -215,7 +662,8 @@ function renderDocumentTabs() {
         <div class="doc-tab-strip">
             ${openTabs.map(tab => `
                 <button class="doc-tab ${tab.view === currentView ? 'active' : ''}" data-tab-view="${escapeHtml(tab.view)}">
-                    ${escapeHtml(tab.title)}
+                    <i class="${getTabIcon(tab.view)}"></i>
+                    <span>${escapeHtml(tab.title)}</span>
                 </button>
             `).join('')}
         </div>
@@ -262,6 +710,7 @@ async function loadView(view, options = {}) {
     renderDocumentTabs();
     status.textContent = shell?.dataset.status || 'Ready';
     setActiveObject(view);
+    updateContextualRibbon(view);
     await initCurrentView();
 }
 
@@ -279,6 +728,7 @@ function closeActiveTab() {
         status.textContent = 'Ready';
         renderDocumentTabs();
         setActiveObject('');
+        updateContextualRibbon('');
         return;
     }
 
@@ -288,8 +738,12 @@ function closeActiveTab() {
 
 function switchTableMode(mode) {
     const target = mode === 'design'
-        ? tableViewPairs[currentView] || currentView
-        : designViewPairs[currentView] || currentView;
+        ? tableViewPairs[currentView] || formViewPairs[currentView] || currentView
+        : designViewPairs[currentView] || formDesignViewPairs[currentView] || currentView;
+
+    if (target === currentView) {
+        return;
+    }
 
     loadView(target, { replaceActive: true });
 }
@@ -299,6 +753,8 @@ async function initCurrentView() {
     initTableViews(db);
     initDesignViews(db);
     initFormViews(db);
+    initFormDesignViews(db);
+    initReportViews(db);
     initQueryBuilders(db);
 }
 
@@ -628,11 +1084,31 @@ function initFormViews(db) {
         let index = 0;
 
         function renderForm() {
+            if (!form) {
+                view.innerHTML = '<div class="p-6 text-red-700">Form definition was not found.</div>';
+                return;
+            }
+
             const parentTable = db.tables[form.parentTable];
+            if (!parentTable) {
+                view.innerHTML = `<div class="p-6 text-red-700">Parent table ${escapeHtml(form.parentTable)} was not found.</div>`;
+                return;
+            }
+
             const parentRows = parentTable.data;
             const parent = parentRows[index];
             const subform = form.subform;
             const subTable = db.tables[subform.table];
+            if (!subTable) {
+                view.innerHTML = `<div class="p-6 text-red-700">Subform table ${escapeHtml(subform.table)} was not found.</div>`;
+                return;
+            }
+
+            if (!parent) {
+                view.innerHTML = '<div class="p-6 text-neutral-500">This form has no records.</div>';
+                return;
+            }
+
             const subRows = subTable.data.filter(row => String(row[subform.foreignKey]) === String(parent[form.parentKey]));
             const parentColumns = parentTable.structure.columns.filter(column => form.fields.includes(column.name));
             const total = subRows.reduce((sum, row) => sum + Number(row.Total || row.UnitPrice * row.Quantity || 0), 0);
@@ -690,7 +1166,7 @@ function initFormViews(db) {
                 return;
             }
 
-            const count = db.tables[form.parentTable].data.length;
+            const count = db.tables[form.parentTable]?.data.length || 0;
             if (button.dataset.formNav === 'first') index = 0;
             if (button.dataset.formNav === 'previous') index = Math.max(0, index - 1);
             if (button.dataset.formNav === 'next') index = Math.min(count - 1, index + 1);
@@ -702,6 +1178,136 @@ function initFormViews(db) {
     });
 }
 
+function initFormDesignViews(db) {
+    content.querySelectorAll('[data-form-design-view]').forEach(view => {
+        if (view.dataset.ready === 'true') {
+            return;
+        }
+
+        view.dataset.ready = 'true';
+        const form = db.forms[view.dataset.formId];
+        if (!form) {
+            view.innerHTML = '<div class="p-6 text-red-700">Form definition was not found.</div>';
+            return;
+        }
+
+        const parentTable = db.tables[form.parentTable];
+        if (!parentTable) {
+            view.innerHTML = `<div class="p-6 text-red-700">Parent table ${escapeHtml(form.parentTable)} was not found.</div>`;
+            return;
+        }
+
+        const parentColumns = parentTable.structure.columns.filter(column => form.fields.includes(column.name));
+        const subTable = db.tables[form.subform.table];
+        if (!subTable) {
+            view.innerHTML = `<div class="p-6 text-red-700">Subform table ${escapeHtml(form.subform.table)} was not found.</div>`;
+            return;
+        }
+
+        const subColumns = subTable.structure.columns.filter(column => form.subform.columns.includes(column.name));
+
+        view.innerHTML = `
+            <div class="form-designer">
+                <div class="designer-tab"><i class="fas fa-window-restore"></i><span>${escapeHtml(form.title)}</span></div>
+                <div class="designer-rulers">
+                    <div class="designer-corner"></div>
+                    <div class="designer-ruler-x">${Array.from({ length: 10 }, (_, index) => `<span>${index}</span>`).join('')}</div>
+                </div>
+                <div class="designer-body">
+                    <div class="designer-nav-label">Navigation Pane</div>
+                    <div class="designer-canvas">
+                        <section class="designer-section form-header-section">
+                            <div class="designer-section-title"><i class="fas fa-caret-down"></i> Form Header</div>
+                            <div class="designer-band form-header-band">
+                                <div class="designer-form-icon"><i class="fas fa-window-restore"></i></div>
+                                <div class="designer-title-control">${escapeHtml(form.title)}</div>
+                            </div>
+                        </section>
+                        <section class="designer-section detail-section">
+                            <div class="designer-section-title"><i class="fas fa-caret-down"></i> Detail</div>
+                            <div class="designer-band detail-band">
+                                ${parentColumns.map((column, index) => `
+                                    <label class="designer-label" style="top:${34 + index * 64}px">${escapeHtml(column.label || column.name)}</label>
+                                    <div class="designer-input" style="top:${28 + index * 64}px">${escapeHtml(column.name)}</div>
+                                `).join('')}
+                                <div class="designer-subform">
+                                    <div class="designer-subform-title">${escapeHtml(form.subform.title)}</div>
+                                    <div class="designer-subform-grid">
+                                        ${subColumns.slice(0, 5).map(column => `<span>${escapeHtml(column.label || column.name)}</span>`).join('')}
+                                    </div>
+                                </div>
+                            </div>
+                        </section>
+                        <section class="designer-section form-footer-section">
+                            <div class="designer-section-title"><i class="fas fa-caret-down"></i> Form Footer</div>
+                            <div class="designer-band form-footer-band"></div>
+                        </section>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+}
+
+function initReportViews(db) {
+    content.querySelectorAll('[data-report-view]').forEach(view => {
+        if (view.dataset.ready === 'true') {
+            return;
+        }
+
+        view.dataset.ready = 'true';
+        const report = db.reports?.[view.dataset.reportId];
+
+        if (!report) {
+            view.innerHTML = '<div class="p-6 text-red-700">Report definition was not found.</div>';
+            return;
+        }
+
+        const columns = report.columns || [];
+        const rows = report.rows || [];
+        const colors = ['#5b9bd5', '#ed7d31', '#70ad47', '#ffc000', '#9e67ab'];
+
+        view.innerHTML = `
+            <div class="mx-auto min-h-[720px] w-[760px] bg-white p-10 shadow-xl">
+                <div class="border-b-4 border-[#a92f35] pb-4">
+                    <h2 class="text-3xl font-semibold text-[#a92f35]">${escapeHtml(report.title || 'Report')}</h2>
+                    <p class="text-neutral-500">${escapeHtml(report.period || '')}</p>
+                </div>
+                <div class="mt-8 grid grid-cols-3 gap-4 text-center">
+                    ${(report.stats || []).map(stat => `
+                        <div class="report-stat">
+                            <span>${escapeHtml(stat.label)}</span>
+                            <strong>${escapeHtml(stat.value)}</strong>
+                        </div>
+                    `).join('')}
+                </div>
+                <table class="mt-8 w-full border-collapse text-sm">
+                    <thead>
+                        <tr class="bg-[#eceff3]">
+                            ${columns.map(column => `<th class="report-th">${escapeHtml(column)}</th>`).join('')}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows.map(row => `
+                            <tr>
+                                ${columns.map(column => `<td class="report-td">${escapeHtml(row[column] ?? '')}</td>`).join('')}
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+                <div class="mt-12 h-40 border border-dashed border-[#9aa6b2] bg-[#f8fafc] p-4">
+                    <div class="mb-3 text-sm font-semibold text-neutral-600">Sales by category</div>
+                    <div class="flex h-24 items-end gap-4">
+                        ${(report.chart || []).map((height, index) => `
+                            <div class="w-20" style="height:${Number(height) || 0}%; background:${colors[index % colors.length]}"></div>
+                        `).join('')}
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+}
+
 function initQueryBuilders(db) {
     content.querySelectorAll('[data-query-builder]').forEach(builder => {
         if (builder.dataset.ready === 'true') {
@@ -709,22 +1315,46 @@ function initQueryBuilders(db) {
         }
 
         builder.dataset.ready = 'true';
-        const query = db.queries[builder.dataset.queryId];
+        const query = getDefinitionByName(db.queries, builder.dataset.queryId);
         const canvas = builder.querySelector('[data-query-canvas]');
         const wires = builder.querySelector('[data-query-wires]');
         const picker = builder.querySelector('[data-table-picker]');
         const gridHost = builder.querySelector('[data-query-grid]');
-        const sqlHost = builder.querySelector('[data-query-sql]');
-        const tables = new Set(query.tables);
-        let connections = query.connections.map(connection => ({ ...connection }));
+
+        if (!query) {
+            canvas.innerHTML = '<div class="p-6 text-red-700">Query definition was not found.</div>';
+            return;
+        }
+
+        const tables = new Set((query.tables || [])
+            .map(table => resolveTableName(db, table))
+            .filter(table => db.tables[table]));
+        let connections = (query.connections || []).map(connection => ({
+            from: normalizeFieldRef(db, connection.from),
+            fromSide: 'right',
+            to: normalizeFieldRef(db, connection.to),
+            toSide: 'left'
+        }));
         let selectedConnection = null;
-        let pendingPort = null;
+        let dragConnection = null;
+        let selectedFields = (query.fields || []).map(field => ({
+            ...field,
+            table: resolveTableName(db, field.table)
+        }));
 
         picker.innerHTML = Object.keys(db.tables).map(table => `<option value="${escapeHtml(table)}">${escapeHtml(table)}</option>`).join('');
 
         function renderNodes() {
             canvas.querySelectorAll('.query-node').forEach(node => node.remove());
-            Array.from(tables).forEach((tableName, index) => {
+            const availableTables = Array.from(tables).filter(tableName => db.tables[tableName]);
+
+            if (!availableTables.length) {
+                canvas.insertAdjacentHTML('beforeend', '<div class="p-6 text-neutral-600">This query does not reference any available tables.</div>');
+                drawWires();
+                return;
+            }
+
+            availableTables.forEach((tableName, index) => {
                 const table = db.tables[tableName];
                 const node = document.createElement('section');
                 node.className = 'query-node table-node';
@@ -734,10 +1364,15 @@ function initQueryBuilders(db) {
                 node.innerHTML = `
                     <header><span>${escapeHtml(tableName)}</span><small>Table</small></header>
                     ${table.structure.columns.map(column => `
-                        <button class="query-port out" data-ref="${escapeHtml(tableName)}.${escapeHtml(column.name)}" data-table="${escapeHtml(tableName)}" data-field="${escapeHtml(column.name)}">
-                            ${escapeHtml(column.name)}
-                            <span>${escapeHtml(column.type)}</span>
-                        </button>
+                        <div class="query-field-row" data-ref="${escapeHtml(tableName)}.${escapeHtml(column.name)}" data-table="${escapeHtml(tableName)}" data-field="${escapeHtml(column.name)}" data-type="${escapeHtml(column.type)}">
+                            <button class="query-handle query-handle-left" data-side="left" title="Connect from left"></button>
+                            <label class="query-field-check">
+                                <input type="checkbox" data-query-field-check ${selectedFields.some(field => field.table === tableName && field.field === column.name) ? 'checked' : ''}>
+                                <span>${escapeHtml(column.name)}</span>
+                            </label>
+                            <small>${escapeHtml(column.type)}</small>
+                            <button class="query-handle query-handle-right" data-side="right" title="Connect from right"></button>
+                        </div>
                     `).join('')}
                 `;
                 canvas.appendChild(node);
@@ -747,30 +1382,46 @@ function initQueryBuilders(db) {
         }
 
         function renderDesignGrid() {
+            const fields = selectedFields.length ? selectedFields : [{ field: '', table: '', sort: '', show: true, criteria: '' }];
             gridHost.innerHTML = `
                 <table class="query-grid bg-white">
                     <tbody>
-                        <tr><th>Field:</th>${query.fields.map(field => `<td>${escapeHtml(field.field)}</td>`).join('')}</tr>
-                        <tr><th>Table:</th>${query.fields.map(field => `<td>${escapeHtml(field.table)}</td>`).join('')}</tr>
-                        <tr><th>Sort:</th>${query.fields.map(field => `<td>${escapeHtml(field.sort)}</td>`).join('')}</tr>
-                        <tr><th>Show:</th>${query.fields.map(field => `<td><input type="checkbox" ${field.show ? 'checked' : ''}></td>`).join('')}</tr>
-                        <tr><th>Criteria:</th>${query.fields.map(field => `<td>${escapeHtml(field.criteria)}</td>`).join('')}</tr>
-                        <tr><th>or:</th>${query.fields.map(() => '<td></td>').join('')}</tr>
+                        <tr><th>Field:</th>${fields.map(field => `<td>${escapeHtml(field.field)}</td>`).join('')}</tr>
+                        <tr><th>Table:</th>${fields.map(field => `<td>${escapeHtml(field.table)}</td>`).join('')}</tr>
+                        <tr><th>Sort:</th>${fields.map(field => `<td>${escapeHtml(field.sort || '')}</td>`).join('')}</tr>
+                        <tr><th>Show:</th>${fields.map(field => `<td><input type="checkbox" ${field.show !== false ? 'checked' : ''}></td>`).join('')}</tr>
+                        <tr><th>Criteria:</th>${fields.map(field => `<td>${escapeHtml(field.criteria || '')}</td>`).join('')}</tr>
+                        <tr><th>or:</th>${fields.map(() => '<td></td>').join('')}</tr>
                     </tbody>
                 </table>
             `;
-            sqlHost.textContent = query.sql;
         }
 
-        function portCenter(ref) {
-            const port = canvas.querySelector(`[data-ref="${CSS.escape(ref)}"]`);
-            if (!port) return null;
+        function handleCenter(ref, side) {
+            const row = canvas.querySelector(`[data-ref="${CSS.escape(ref)}"]`);
+            const handle = row?.querySelector(`[data-side="${side}"]`);
+            if (!handle) return null;
             const canvasBox = canvas.getBoundingClientRect();
-            const portBox = port.getBoundingClientRect();
+            const portBox = handle.getBoundingClientRect();
             return {
-                x: portBox.right - canvasBox.left + canvas.scrollLeft - 4,
+                x: portBox.left - canvasBox.left + canvas.scrollLeft + (portBox.width / 2),
                 y: portBox.top - canvasBox.top + canvas.scrollTop + (portBox.height / 2)
             };
+        }
+
+        function canvasPointFromEvent(event) {
+            const canvasBox = canvas.getBoundingClientRect();
+            return {
+                x: event.clientX - canvasBox.left + canvas.scrollLeft,
+                y: event.clientY - canvasBox.top + canvas.scrollTop
+            };
+        }
+
+        function buildWirePath(start, end, startSide = 'right', endSide = 'left') {
+            const direction = startSide === 'right' ? 1 : -1;
+            const endDirection = endSide === 'left' ? -1 : 1;
+            const control = Math.max(70, Math.abs(end.x - start.x) * .45);
+            return `M ${start.x} ${start.y} C ${start.x + (control * direction)} ${start.y}, ${end.x + (control * endDirection)} ${end.y}, ${end.x} ${end.y}`;
         }
 
         function drawWires() {
@@ -782,12 +1433,11 @@ function initQueryBuilders(db) {
             wires.style.height = `${height}px`;
 
             connections.forEach((connection, index) => {
-                const start = portCenter(connection.from);
-                const end = portCenter(connection.to);
+                const start = handleCenter(connection.from, connection.fromSide || 'right');
+                const end = handleCenter(connection.to, connection.toSide || 'left');
                 if (!start || !end) return;
 
-                const control = Math.max(70, Math.abs(end.x - start.x) * .45);
-                const path = `M ${start.x} ${start.y} C ${start.x + control} ${start.y}, ${end.x - control} ${end.y}, ${end.x} ${end.y}`;
+                const path = buildWirePath(start, end, connection.fromSide || 'right', connection.toSide || 'left');
                 const shadow = document.createElementNS('http://www.w3.org/2000/svg', 'path');
                 const wire = document.createElementNS('http://www.w3.org/2000/svg', 'path');
                 shadow.setAttribute('d', path);
@@ -797,6 +1447,18 @@ function initQueryBuilders(db) {
                 wire.dataset.connectionIndex = String(index);
                 wires.append(shadow, wire);
             });
+
+            if (dragConnection?.cursor) {
+                const sourceRow = dragConnection.handle.closest('.query-field-row');
+                const start = handleCenter(sourceRow.dataset.ref, dragConnection.side);
+                const end = dragConnection.cursor;
+                if (start && end) {
+                    const preview = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                    preview.setAttribute('d', buildWirePath(start, end, dragConnection.side, dragConnection.side === 'right' ? 'left' : 'right'));
+                    preview.setAttribute('class', 'query-wire preview');
+                    wires.append(preview);
+                }
+            }
         }
 
         function makeDraggable(node) {
@@ -831,36 +1493,97 @@ function initQueryBuilders(db) {
             });
         }
 
+        function updateSelectedField(row, checked) {
+            const table = row.dataset.table;
+            const field = row.dataset.field;
+            selectedFields = selectedFields.filter(item => !(item.table === table && item.field === field));
+
+            if (checked) {
+                const existing = query.fields.find(item => item.table === table && item.field === field);
+                selectedFields.push(existing ? { ...existing, show: true } : {
+                    table,
+                    field,
+                    sort: '',
+                    show: true,
+                    criteria: ''
+                });
+            }
+
+            renderDesignGrid();
+        }
+
+        function finishConnection(targetHandle) {
+            if (!dragConnection) {
+                return;
+            }
+
+            const targetRow = targetHandle?.closest('.query-field-row');
+            const sourceRow = dragConnection.handle.closest('.query-field-row');
+            const sourceSide = dragConnection.side;
+            const targetSide = targetHandle?.dataset.side;
+
+            if (targetRow && sourceRow && sourceRow.dataset.table !== targetRow.dataset.table && sourceSide !== targetSide) {
+                const fromIsRight = sourceSide === 'right';
+                connections.push({
+                    from: fromIsRight ? sourceRow.dataset.ref : targetRow.dataset.ref,
+                    fromSide: fromIsRight ? sourceSide : targetSide,
+                    to: fromIsRight ? targetRow.dataset.ref : sourceRow.dataset.ref,
+                    toSide: fromIsRight ? targetSide : sourceSide
+                });
+            }
+
+            dragConnection.handle.classList.remove('dragging');
+            dragConnection = null;
+            drawWires();
+        }
+
         canvas.addEventListener('click', event => {
             const wire = event.target.closest('.query-wire:not(.shadow)');
             if (wire) {
                 selectedConnection = Number(wire.dataset.connectionIndex);
-                pendingPort = null;
-                canvas.querySelectorAll('.query-port.pending').forEach(port => port.classList.remove('pending'));
                 drawWires();
                 return;
             }
 
-            const port = event.target.closest('[data-ref]');
-            if (!port) {
+            const checkbox = event.target.closest('[data-query-field-check]');
+            if (checkbox) {
+                updateSelectedField(checkbox.closest('.query-field-row'), checkbox.checked);
                 return;
             }
+        });
 
+        canvas.addEventListener('pointerdown', event => {
+            const handle = event.target.closest('.query-handle');
+            if (!handle) return;
             selectedConnection = null;
-            if (!pendingPort) {
-                pendingPort = port;
-                port.classList.add('pending');
-                drawWires();
-                return;
-            }
+            dragConnection = {
+                handle,
+                side: handle.dataset.side,
+                cursor: canvasPointFromEvent(event)
+            };
+            handle.classList.add('dragging');
+            handle.setPointerCapture(event.pointerId);
+            drawWires();
+            event.preventDefault();
+        });
 
-            const from = pendingPort.dataset.ref;
-            const to = port.dataset.ref;
-            if (from !== to && pendingPort.dataset.table !== port.dataset.table) {
-                connections.push({ from, to });
-            }
-            pendingPort.classList.remove('pending');
-            pendingPort = null;
+        canvas.addEventListener('pointermove', event => {
+            if (!dragConnection) return;
+            dragConnection.cursor = canvasPointFromEvent(event);
+            drawWires();
+        });
+
+        canvas.addEventListener('pointerup', event => {
+            if (!dragConnection) return;
+            const dropTarget = document.elementFromPoint(event.clientX, event.clientY);
+            const targetHandle = dropTarget?.closest('.query-handle');
+            finishConnection(targetHandle);
+        });
+
+        canvas.addEventListener('pointercancel', () => {
+            if (!dragConnection) return;
+            dragConnection.handle.classList.remove('dragging');
+            dragConnection = null;
             drawWires();
         });
 
@@ -875,8 +1598,7 @@ function initQueryBuilders(db) {
         builder.querySelector('[data-clear-connections]').addEventListener('click', () => {
             connections = [];
             selectedConnection = null;
-            pendingPort = null;
-            canvas.querySelectorAll('.query-port.pending').forEach(port => port.classList.remove('pending'));
+            dragConnection = null;
             drawWires();
         });
 
@@ -891,6 +1613,22 @@ function initQueryBuilders(db) {
 }
 
 document.addEventListener('click', event => {
+    const moreFieldsButton = event.target.closest('[data-command="more-fields"]');
+    if (moreFieldsButton) {
+        openMoreFieldsMenu(moreFieldsButton);
+        return;
+    }
+
+    const moreFieldsItem = event.target.closest('[data-more-field]');
+    if (moreFieldsItem) {
+        closeMoreFieldsMenu();
+        return;
+    }
+
+    if (moreFieldsMenu && !event.target.closest('.more-fields-menu')) {
+        closeMoreFieldsMenu();
+    }
+
     const docClose = event.target.closest('.doc-close');
     if (docClose) {
         closeActiveTab();
@@ -963,5 +1701,29 @@ document.addEventListener('dblclick', event => {
     loadView(objectLink.dataset.view);
 });
 
-activateRibbonTab('home');
-loadView(app.dataset.initialView || 'table-customers');
+async function bootstrapApp() {
+    activateRibbonTab('home');
+
+    try {
+        const db = await getDatabase();
+        configureObjectMaps(db);
+        renderObjectList(db);
+
+        const requestedView = app.dataset.initialView || '';
+        const firstTableView = Object.keys(tableViewPairs)[0];
+        const initialView = viewTitles[requestedView] ? requestedView : firstTableView;
+
+        if (initialView) {
+            await loadView(initialView);
+            return;
+        }
+
+        content.innerHTML = '<div class="p-6 text-neutral-500">No database tables were found.</div>';
+        status.textContent = 'Ready';
+    } catch (error) {
+        content.innerHTML = `<div class="p-6 text-red-700">Unable to load database: ${escapeHtml(error.message)}</div>`;
+        status.textContent = 'Database Error';
+    }
+}
+
+bootstrapApp();
