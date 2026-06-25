@@ -1,0 +1,188 @@
+{
+  "tables": {
+    "Customers": {
+      "structure": {
+        "primaryKey": "CustomerID",
+        "columns": [
+          { "name": "CustomerID", "label": "Customer ID", "type": "Short Text", "width": 110 },
+          { "name": "Company", "label": "Company", "type": "Short Text", "width": 190 },
+          { "name": "Contact", "label": "Contact", "type": "Short Text", "width": 150 },
+          { "name": "RegionID", "label": "Region", "type": "Number", "width": 95 },
+          { "name": "Email", "label": "Email", "type": "Short Text", "width": 210 },
+          { "name": "CreditLimit", "label": "Credit Limit", "type": "Currency", "width": 120 },
+          { "name": "Status", "label": "Status", "type": "Short Text", "width": 95 }
+        ]
+      },
+      "data": [
+        { "CustomerID": "C-1001", "Company": "Northwind Traders", "Contact": "Laura Callahan", "RegionID": 1, "Email": "laura@northwind.example", "CreditLimit": 5000, "Status": "Preferred" },
+        { "CustomerID": "C-1002", "Company": "Alpine Ski House", "Contact": "Sam Lee", "RegionID": 2, "Email": "sam@alpine.example", "CreditLimit": 8400, "Status": "Active" },
+        { "CustomerID": "C-1003", "Company": "Blue Yonder", "Contact": "Nora Webb", "RegionID": 3, "Email": "nora@blueyonder.example", "CreditLimit": 4200, "Status": "Active" },
+        { "CustomerID": "C-1004", "Company": "Contoso Books", "Contact": "Mina Patel", "RegionID": 1, "Email": "mina@contoso.example", "CreditLimit": 6200, "Status": "Preferred" },
+        { "CustomerID": "C-1005", "Company": "Fabrikam Supply", "Contact": "Iris Chen", "RegionID": 4, "Email": "iris@fabrikam.example", "CreditLimit": 7600, "Status": "Active" },
+        { "CustomerID": "C-1006", "Company": "Litware Retail", "Contact": "Owen Park", "RegionID": 2, "Email": "owen@litware.example", "CreditLimit": 3200, "Status": "Hold" }
+      ]
+    },
+    "Orders": {
+      "structure": {
+        "primaryKey": "OrderID",
+        "columns": [
+          { "name": "OrderID", "label": "Order ID", "type": "AutoNumber", "width": 90 },
+          { "name": "CustomerID", "label": "Customer", "type": "Short Text", "width": 110 },
+          { "name": "OrderDate", "label": "Order Date", "type": "Date/Time", "width": 120 },
+          { "name": "Status", "label": "Status", "type": "Short Text", "width": 90 },
+          { "name": "Total", "label": "Total", "type": "Currency", "width": 105 },
+          { "name": "SalesRep", "label": "Sales Rep", "type": "Short Text", "width": 140 }
+        ]
+      },
+      "data": [
+        { "OrderID": 1042, "CustomerID": "C-1004", "OrderDate": "2026-06-18", "Status": "Open", "Total": 245, "SalesRep": "Lisa Washington" },
+        { "OrderID": 1049, "CustomerID": "C-1004", "OrderDate": "2026-06-21", "Status": "Open", "Total": 336, "SalesRep": "Lisa Washington" },
+        { "OrderID": 1057, "CustomerID": "C-1004", "OrderDate": "2026-06-24", "Status": "Open", "Total": 190, "SalesRep": "Lisa Washington" },
+        { "OrderID": 1059, "CustomerID": "C-1001", "OrderDate": "2026-06-19", "Status": "Paid", "Total": 1180, "SalesRep": "Andrew Fuller" },
+        { "OrderID": 1060, "CustomerID": "C-1002", "OrderDate": "2026-06-20", "Status": "Open", "Total": 8942, "SalesRep": "Janet Leverling" },
+        { "OrderID": 1061, "CustomerID": "C-1003", "OrderDate": "2026-06-22", "Status": "Open", "Total": 490, "SalesRep": "Robert King" },
+        { "OrderID": 1062, "CustomerID": "C-1005", "OrderDate": "2026-06-23", "Status": "Open", "Total": 2150, "SalesRep": "Nancy Davolio" },
+        { "OrderID": 1063, "CustomerID": "C-1006", "OrderDate": "2026-06-24", "Status": "Hold", "Total": 640, "SalesRep": "Janet Leverling" }
+      ]
+    },
+    "OrderItems": {
+      "structure": {
+        "primaryKey": "LineID",
+        "columns": [
+          { "name": "LineID", "label": "Line ID", "type": "AutoNumber", "width": 80 },
+          { "name": "OrderID", "label": "Order ID", "type": "Number", "width": 90 },
+          { "name": "ProductID", "label": "Product", "type": "Short Text", "width": 100 },
+          { "name": "Quantity", "label": "Quantity", "type": "Number", "width": 90 },
+          { "name": "UnitPrice", "label": "Unit Price", "type": "Currency", "width": 100 },
+          { "name": "Discount", "label": "Discount", "type": "Number", "width": 90 }
+        ]
+      },
+      "data": [
+        { "LineID": 1, "OrderID": 1042, "ProductID": "P-101", "Quantity": 5, "UnitPrice": 49, "Discount": 0 },
+        { "LineID": 2, "OrderID": 1049, "ProductID": "P-102", "Quantity": 14, "UnitPrice": 24, "Discount": 0 },
+        { "LineID": 3, "OrderID": 1057, "ProductID": "P-103", "Quantity": 2, "UnitPrice": 95, "Discount": 0 },
+        { "LineID": 4, "OrderID": 1059, "ProductID": "P-104", "Quantity": 8, "UnitPrice": 147.5, "Discount": 0.05 },
+        { "LineID": 5, "OrderID": 1060, "ProductID": "P-105", "Quantity": 25, "UnitPrice": 220, "Discount": 0 },
+        { "LineID": 6, "OrderID": 1060, "ProductID": "P-106", "Quantity": 9, "UnitPrice": 382.44, "Discount": 0.1 },
+        { "LineID": 7, "OrderID": 1061, "ProductID": "P-101", "Quantity": 10, "UnitPrice": 49, "Discount": 0 },
+        { "LineID": 8, "OrderID": 1062, "ProductID": "P-107", "Quantity": 5, "UnitPrice": 430, "Discount": 0 },
+        { "LineID": 9, "OrderID": 1063, "ProductID": "P-102", "Quantity": 20, "UnitPrice": 32, "Discount": 0 }
+      ]
+    },
+    "Products": {
+      "structure": {
+        "primaryKey": "ProductID",
+        "columns": [
+          { "name": "ProductID", "label": "Product ID", "type": "Short Text", "width": 100 },
+          { "name": "ProductName", "label": "Product Name", "type": "Short Text", "width": 190 },
+          { "name": "Category", "label": "Category", "type": "Short Text", "width": 130 },
+          { "name": "UnitPrice", "label": "Unit Price", "type": "Currency", "width": 105 },
+          { "name": "UnitsInStock", "label": "In Stock", "type": "Number", "width": 95 }
+        ]
+      },
+      "data": [
+        { "ProductID": "P-101", "ProductName": "Binder Kit", "Category": "Office", "UnitPrice": 49, "UnitsInStock": 120 },
+        { "ProductID": "P-102", "ProductName": "Receipt Paper", "Category": "Office", "UnitPrice": 24, "UnitsInStock": 340 },
+        { "ProductID": "P-103", "ProductName": "Desk Lamp", "Category": "Fixtures", "UnitPrice": 95, "UnitsInStock": 44 },
+        { "ProductID": "P-104", "ProductName": "Ergonomic Chair", "Category": "Furniture", "UnitPrice": 147.5, "UnitsInStock": 18 },
+        { "ProductID": "P-105", "ProductName": "Barcode Scanner", "Category": "Hardware", "UnitPrice": 220, "UnitsInStock": 31 },
+        { "ProductID": "P-106", "ProductName": "POS Terminal", "Category": "Hardware", "UnitPrice": 382.44, "UnitsInStock": 12 },
+        { "ProductID": "P-107", "ProductName": "Display Stand", "Category": "Fixtures", "UnitPrice": 430, "UnitsInStock": 8 }
+      ]
+    },
+    "Regions": {
+      "structure": {
+        "primaryKey": "RegionID",
+        "columns": [
+          { "name": "RegionID", "label": "Region ID", "type": "Number", "width": 90 },
+          { "name": "RegionName", "label": "Region Name", "type": "Short Text", "width": 150 },
+          { "name": "Manager", "label": "Manager", "type": "Short Text", "width": 150 }
+        ]
+      },
+      "data": [
+        { "RegionID": 1, "RegionName": "Northwest", "Manager": "Lisa Washington" },
+        { "RegionID": 2, "RegionName": "Central", "Manager": "Janet Leverling" },
+        { "RegionID": 3, "RegionName": "Southwest", "Manager": "Robert King" },
+        { "RegionID": 4, "RegionName": "Northeast", "Manager": "Nancy Davolio" }
+      ]
+    },
+    "SalesTargets": {
+      "structure": {
+        "primaryKey": "TargetID",
+        "columns": [
+          { "name": "TargetID", "label": "Target ID", "type": "AutoNumber", "width": 90 },
+          { "name": "RegionID", "label": "Region", "type": "Number", "width": 90 },
+          { "name": "Quarter", "label": "Quarter", "type": "Short Text", "width": 90 },
+          { "name": "TargetAmount", "label": "Target Amount", "type": "Currency", "width": 130 }
+        ]
+      },
+      "data": [
+        { "TargetID": 1, "RegionID": 1, "Quarter": "Q2", "TargetAmount": 15000 },
+        { "TargetID": 2, "RegionID": 2, "Quarter": "Q2", "TargetAmount": 18000 },
+        { "TargetID": 3, "RegionID": 3, "Quarter": "Q2", "TargetAmount": 11000 },
+        { "TargetID": 4, "RegionID": 4, "Quarter": "Q2", "TargetAmount": 14000 }
+      ]
+    }
+  },
+  "queries": {
+    "OpenOrders": {
+      "title": "OpenOrders",
+      "tables": ["Customers", "Orders", "OrderItems", "Products"],
+      "connections": [
+        { "from": "Customers.CustomerID", "to": "Orders.CustomerID" },
+        { "from": "Orders.OrderID", "to": "OrderItems.OrderID" },
+        { "from": "Products.ProductID", "to": "OrderItems.ProductID" }
+      ],
+      "fields": [
+        { "field": "Company", "table": "Customers", "sort": "", "show": true, "criteria": "" },
+        { "field": "OrderDate", "table": "Orders", "sort": "Descending", "show": true, "criteria": ">= Date()-30" },
+        { "field": "ProductName", "table": "Products", "sort": "", "show": true, "criteria": "" },
+        { "field": "Quantity", "table": "OrderItems", "sort": "", "show": true, "criteria": "> 0" },
+        { "field": "Status", "table": "Orders", "sort": "", "show": true, "criteria": "\"Open\"" }
+      ],
+      "sql": "SELECT Customers.Company, Orders.OrderDate, Products.ProductName, OrderItems.Quantity, Orders.Status FROM Products INNER JOIN (Customers INNER JOIN (Orders INNER JOIN OrderItems ON Orders.OrderID = OrderItems.OrderID) ON Customers.CustomerID = Orders.CustomerID) ON Products.ProductID = OrderItems.ProductID WHERE Orders.OrderDate >= Date()-30 AND OrderItems.Quantity > 0 AND Orders.Status = \"Open\";"
+    },
+    "SalesByRegion": {
+      "title": "SalesByRegion",
+      "tables": ["Regions", "Customers", "Orders", "SalesTargets"],
+      "connections": [
+        { "from": "Regions.RegionID", "to": "Customers.RegionID" },
+        { "from": "Customers.CustomerID", "to": "Orders.CustomerID" },
+        { "from": "Regions.RegionID", "to": "SalesTargets.RegionID" }
+      ],
+      "fields": [
+        { "field": "RegionName", "table": "Regions", "sort": "Ascending", "show": true, "criteria": "" },
+        { "field": "Manager", "table": "Regions", "sort": "", "show": true, "criteria": "" },
+        { "field": "Total", "table": "Orders", "sort": "", "show": true, "criteria": "Sum" },
+        { "field": "TargetAmount", "table": "SalesTargets", "sort": "", "show": true, "criteria": "Q2" }
+      ],
+      "sql": "SELECT Regions.RegionName, Regions.Manager, Sum(Orders.Total) AS SalesTotal, SalesTargets.TargetAmount FROM (Regions INNER JOIN Customers ON Regions.RegionID = Customers.RegionID) INNER JOIN Orders ON Customers.CustomerID = Orders.CustomerID INNER JOIN SalesTargets ON Regions.RegionID = SalesTargets.RegionID GROUP BY Regions.RegionName, Regions.Manager, SalesTargets.TargetAmount;"
+    }
+  },
+  "forms": {
+    "CustomerOrders": {
+      "title": "Customer Orders",
+      "parentTable": "Customers",
+      "parentKey": "CustomerID",
+      "fields": ["CustomerID", "Company", "Contact", "Email", "CreditLimit", "Status"],
+      "subform": {
+        "title": "Orders Subform",
+        "table": "Orders",
+        "foreignKey": "CustomerID",
+        "columns": ["OrderID", "OrderDate", "Status", "Total", "SalesRep"]
+      }
+    },
+    "InvoiceEntry": {
+      "title": "Invoice Entry",
+      "parentTable": "Orders",
+      "parentKey": "OrderID",
+      "fields": ["OrderID", "CustomerID", "OrderDate", "Status", "Total", "SalesRep"],
+      "subform": {
+        "title": "Line Items Subform",
+        "table": "OrderItems",
+        "foreignKey": "OrderID",
+        "columns": ["LineID", "ProductID", "Quantity", "UnitPrice", "Discount"]
+      }
+    }
+  }
+}
