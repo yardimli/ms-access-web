@@ -2,10 +2,11 @@
 $initialView = $_GET['view'] ?? 'table-customers';
 ?>
 <!doctype html>
-<html lang="en">
+<html lang="en" translate="no" class="notranslate">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="google" content="notranslate">
     <title>Access Web Mockup</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="vendor/fontawesome/css/all.min.css">

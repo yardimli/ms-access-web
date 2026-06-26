@@ -156,6 +156,87 @@ const createDropdowns = {
     ]
 };
 
+const homeDropdowns = {
+    paste: [
+        { icon: 'paste', label: 'Paste' },
+        { icon: 'paste-special', label: 'Paste Special...' },
+        { icon: 'paste-append', label: 'Paste Append' }
+    ],
+    view: [
+        { icon: 'grid', label: 'Datasheet View', view: '@datasheet', strong: true },
+        { icon: 'design', label: 'Design View', view: '@design', strong: true }
+    ],
+    selection: [
+        { icon: 'filter', label: 'Equals Blank' },
+        { icon: 'filter', label: 'Does Not Equal Blank' }
+    ],
+    advanced: [
+        { icon: 'clear-filter', label: 'Clear All Filters', disabled: true },
+        { icon: 'filter-form', label: 'Filter By Form' },
+        { icon: 'apply-filter', label: 'Apply Filter/Sort' },
+        { icon: 'advanced-filter', label: 'Advanced Filter/Sort...' },
+        { icon: 'folder', label: 'Load from Query...', disabled: true },
+        { icon: 'save-as', label: 'Save As Query', disabled: true },
+        { icon: 'delete-tab', label: 'Delete Tab' },
+        { icon: 'clear-grid', label: 'Clear Grid' },
+        { icon: 'close', label: 'Close' }
+    ],
+    more: [
+        { icon: 'outlook', label: 'Add From Outlook', disabled: true },
+        { icon: 'contact', label: 'Save As Outlook Contact', disabled: true },
+        { icon: 'row-height', label: 'Row Height...' },
+        { icon: 'subdatasheet', label: 'Subdatasheet', submenu: [
+            { icon: 'subdatasheet', label: 'Subdatasheet...' },
+            { icon: 'remove', label: 'Remove', disabled: true },
+            { icon: 'expand', label: 'Expand All', disabled: true },
+            { icon: 'collapse', label: 'Collapse All', disabled: true }
+        ] },
+        { icon: 'hide-fields', label: 'Hide Fields' },
+        { icon: 'unhide-fields', label: 'Unhide Fields' },
+        { icon: 'freeze', label: 'Freeze Fields' },
+        { icon: 'unfreeze', label: 'Unfreeze All Fields' },
+        { icon: 'field-width', label: 'Field Width' }
+    ],
+    goto: [
+        { icon: 'first', label: 'First' },
+        { icon: 'previous', label: 'Previous' },
+        { icon: 'next', label: 'Next', disabled: true },
+        { icon: 'last', label: 'Last' },
+        { icon: 'new', label: 'New', disabled: true }
+    ],
+    select: [
+        { icon: 'pointer', label: 'Select' },
+        { icon: 'select-all', label: 'Select All' }
+    ],
+    font: [
+        { label: 'Calibri Light (Header)', family: 'Calibri Light' },
+        { label: 'Calibri (Detail)', family: 'Calibri' },
+        { label: 'Arial', family: 'Arial' },
+        { label: 'Arial Black', family: 'Arial Black', strong: true },
+        { label: 'Arial Narrow', family: 'Arial Narrow' },
+        { label: 'Bahnschrift', family: 'Bahnschrift' },
+        { label: 'Bahnschrift Condensed', family: 'Bahnschrift Condensed' },
+        { label: 'Bahnschrift Light', family: 'Bahnschrift Light' },
+        { label: 'Bahnschrift SemiBold', family: 'Bahnschrift SemiBold', strong: true },
+        { label: 'Book Antiqua', family: 'Book Antiqua' },
+        { label: 'Bookman Old Style', family: 'Bookman Old Style' },
+        { label: 'Calibri', family: 'Calibri' },
+        { label: 'Cambria', family: 'Cambria' },
+        { label: 'Candara', family: 'Candara' },
+        { label: 'Cascadia Code', family: 'Cascadia Code', strong: true }
+    ],
+    size: ['8', '9', '10', '11', '12', '14', '16', '18', '20', '22', '24', '26', '28', '36', '48', '72'].map(label => ({ label, active: label === '11' })),
+    gridlines: [
+        { icon: 'gridlines-both', label: 'Gridlines: Both', strong: true },
+        { icon: 'gridlines-horizontal', label: 'Gridlines: Horizontal', strong: true },
+        { icon: 'gridlines-vertical', label: 'Gridlines: Vertical', strong: true },
+        { icon: 'gridlines-none', label: 'Gridlines: None', strong: true }
+    ],
+    color: [
+        { colorGrid: true }
+    ]
+};
+
 const tableDataTypes = [
     'Short Text',
     'Long Text',
@@ -377,17 +458,41 @@ function ribbonIcon(name) {
         table: 'fas fa-table',
         design: 'fas fa-pencil-ruler',
         paste: 'fas fa-paste',
+        'paste-special': 'far fa-clipboard',
+        'paste-append': 'fas fa-clipboard-list',
         cut: 'fas fa-cut',
         copy: 'fas fa-copy',
+        'format-painter': 'fas fa-paint-brush',
         filter: 'fas fa-filter',
         'sort-asc': 'fas fa-sort-alpha-down',
         'sort-desc': 'fas fa-sort-alpha-up-alt',
+        'remove-sort': 'fas fa-sort-alpha-down',
+        selection: 'fas fa-filter',
+        advanced: 'fas fa-filter',
+        'toggle-filter': 'fas fa-filter',
         find: 'fas fa-search',
+        replace: 'fas fa-exchange-alt',
+        'go-to': 'fas fa-arrow-right',
+        select: 'fas fa-mouse-pointer',
         new: 'fas fa-plus-square',
         delete: 'fas fa-trash-alt',
         refresh: 'fas fa-sync-alt',
+        'refresh-all': 'fas fa-sync-alt',
+        totals: 'fas fa-sigma',
+        spelling: 'fas fa-spell-check',
         bold: 'fas fa-bold',
         italic: 'fas fa-italic',
+        underline: 'fas fa-underline',
+        'font-color': 'fas fa-font',
+        'text-highlight': 'fas fa-highlighter',
+        'fill-color': 'fas fa-fill-drip',
+        'align-left': 'fas fa-align-left',
+        'align-center': 'fas fa-align-center',
+        'align-right': 'fas fa-align-right',
+        'bullets': 'fas fa-list-ul',
+        'numbered-list': 'fas fa-list-ol',
+        indent: 'fas fa-indent',
+        outdent: 'fas fa-outdent',
         align: 'fas fa-align-left',
         form: 'fas fa-window-restore',
         'form-design': 'fas fa-pencil-ruler',
@@ -516,6 +621,34 @@ function ribbonIcon(name) {
         'save-as': 'fas fa-save',
         print: 'fas fa-print',
         options: 'fas fa-cog'
+        ,
+        'clear-filter': 'fas fa-filter',
+        'filter-form': 'fas fa-wpforms',
+        'apply-filter': 'fas fa-filter',
+        'advanced-filter': 'fas fa-magic',
+        'delete-tab': 'fas fa-times',
+        'clear-grid': 'fas fa-times',
+        close: 'fas fa-window-close',
+        outlook: 'fab fa-microsoft',
+        contact: 'far fa-address-card',
+        'row-height': 'fas fa-arrows-alt-v',
+        subdatasheet: 'fas fa-table',
+        remove: 'fas fa-minus',
+        expand: 'fas fa-expand-alt',
+        collapse: 'fas fa-compress-alt',
+        'hide-fields': 'fas fa-eye-slash',
+        'unhide-fields': 'fas fa-eye',
+        freeze: 'fas fa-columns',
+        unfreeze: 'fas fa-columns',
+        'field-width': 'fas fa-arrows-alt-h',
+        first: 'fas fa-step-backward',
+        previous: 'fas fa-caret-left',
+        next: 'fas fa-caret-right',
+        last: 'fas fa-step-forward',
+        'gridlines-both': 'fas fa-border-all',
+        'gridlines-horizontal': 'fas fa-grip-lines',
+        'gridlines-vertical': 'fas fa-grip-lines-vertical',
+        'gridlines-none': 'far fa-square'
     };
 
     return `<i class="${map[name] || map.more}" aria-hidden="true"></i>`;
@@ -530,7 +663,9 @@ function closeMoreFieldsMenu() {
 function closeCreateMenu() {
     createMenu?.remove();
     createMenu = null;
-    document.querySelector('.create-command.active, .create-mini.active')?.classList.remove('active');
+    document.querySelectorAll('.create-command.active, .create-mini.active, .home-big.active, .home-mini.active, .home-icon-button.active, .home-select.active').forEach(button => {
+        button.classList.remove('active');
+    });
 }
 
 function buildMoreFieldsMenu() {
@@ -605,6 +740,210 @@ function openCreateMenu(button, key) {
     createMenu.style.left = `${Math.max(4, Math.min(box.left, window.innerWidth - createMenu.offsetWidth - 8))}px`;
     createMenu.style.top = `${box.bottom + 1}px`;
     button.classList.add('active');
+}
+
+function homeBig(icon, label, options = {}) {
+    const classes = ['home-big'];
+    if (options.disabled) classes.push('disabled');
+
+    return `
+        <button class="${classes.join(' ')}" type="button" data-command="${escapeHtml(icon)}" ${options.view ? `data-view="${options.view}"` : ''} ${options.menu ? `data-home-menu="${options.menu}"` : ''} ${options.disabled ? 'disabled' : ''}>
+            <span class="home-big-icon">${ribbonIcon(icon)}</span>
+            <span>${escapeHtml(label)}</span>
+            ${options.caret ? '<i class="fas fa-caret-down home-caret"></i>' : ''}
+        </button>
+    `;
+}
+
+function homeMini(icon, label, options = {}) {
+    const classes = ['home-mini'];
+    if (options.disabled) classes.push('disabled');
+
+    return `
+        <button class="${classes.join(' ')}" type="button" data-command="${escapeHtml(icon)}" ${options.view ? `data-view="${options.view}"` : ''} ${options.menu ? `data-home-menu="${options.menu}"` : ''} ${options.disabled ? 'disabled' : ''}>
+            <span class="home-mini-icon">${ribbonIcon(icon)}</span>
+            <span>${escapeHtml(label)}</span>
+            ${options.caret ? '<i class="fas fa-caret-down home-caret"></i>' : ''}
+        </button>
+    `;
+}
+
+function homeIconButton(icon, options = {}) {
+    return `
+        <button class="home-icon-button" type="button" data-command="${escapeHtml(icon)}" ${options.menu ? `data-home-menu="${options.menu}"` : ''} title="${escapeHtml(options.title || icon)}">
+            ${ribbonIcon(icon)}
+            ${options.caret ? '<i class="fas fa-caret-down home-caret"></i>' : ''}
+        </button>
+    `;
+}
+
+function homeSelect(label, key, width = 178) {
+    return `
+        <button class="home-select" type="button" data-home-menu="${escapeHtml(key)}" style="width:${width}px">
+            <span>${escapeHtml(label)}</span>
+            <i class="fas fa-chevron-down"></i>
+        </button>
+    `;
+}
+
+function buildColorPalette() {
+    const themeColumns = [
+        ['#ffffff', '#f2f2f2', '#d9d9d9', '#bfbfbf', '#a6a6a6', '#808080', '#595959', '#404040', '#262626', '#0d0d0d'],
+        ['#000000', '#7f7f7f', '#595959', '#3f3f3f', '#262626'],
+        ['#1f4e79', '#d9eaf7', '#9dc3e6', '#5b9bd5', '#2f75b5', '#1f4e79'],
+        ['#ed7d31', '#fce4d6', '#f8cbad', '#f4b183', '#ed7d31', '#c55a11'],
+        ['#70ad47', '#e2f0d9', '#c6e0b4', '#a9d18e', '#70ad47', '#548235'],
+        ['#ffc000', '#fff2cc', '#ffe699', '#ffd966', '#ffc000', '#bf9000']
+    ];
+    const standard = ['#ffffff', '#000000', '#7f7f7f', '#1f4e79', '#5b9bd5', '#c00000', '#70ad47', '#8064a2', '#00b0f0', '#f4b183', '#d9d9d9', '#a6a6a6', '#595959', '#dbe5f1', '#b4c6e7', '#f4cccc', '#d9ead3', '#d9d2e9', '#d0e0e3', '#fce5cd', '#ff0000', '#ff9900', '#ffff00', '#92d050', '#00b050', '#00b0f0', '#0070c0', '#002060', '#7030a0'];
+
+    return `
+        <div class="color-menu">
+            <button class="color-auto" type="button"><span style="background:#111"></span>Automatic</button>
+            <h3>Theme Colors</h3>
+            <div class="theme-colors">${themeColumns.map(column => `<div>${column.map(color => `<button type="button" style="background:${color}"></button>`).join('')}</div>`).join('')}</div>
+            <h3>Standard Colors</h3>
+            <div class="standard-colors">${standard.map(color => `<button type="button" style="background:${color}"></button>`).join('')}</div>
+            <h3>Recent Colors</h3>
+            <div class="recent-colors"><button type="button" style="background:#ff0000"></button></div>
+            <button class="more-colors" type="button"><i class="fas fa-circle-notch"></i>More Colors...</button>
+        </div>
+    `;
+}
+
+function buildHomeMenu(key) {
+    const items = homeDropdowns[key] || [];
+    if (items.some(item => item.colorGrid)) {
+        return buildColorPalette();
+    }
+
+    return `
+        <div class="home-menu-list ${key === 'font' ? 'font-menu-list' : ''} ${key === 'size' ? 'size-menu-list' : ''}">
+            ${items.map(item => {
+                const rowInner = `
+                    ${item.icon ? `<span class="home-menu-icon">${ribbonIcon(item.icon)}</span>` : ''}
+                    <span class="${item.strong ? 'font-semibold' : ''}">${escapeHtml(item.label)}</span>
+                `;
+
+                if (item.submenu) {
+                    return `
+                        <div class="home-menu-item home-menu-parent ${item.disabled ? 'disabled' : ''}">
+                            ${rowInner}
+                            <i class="fas fa-caret-right home-submenu-caret"></i>
+                            <span class="home-submenu">${item.submenu.map(sub => `
+                                <button class="home-menu-item ${sub.disabled ? 'disabled' : ''}" type="button" data-home-menu-item data-home-value="${escapeHtml(sub.label)}" ${sub.disabled ? 'disabled' : ''}>
+                                    <span class="home-menu-icon">${ribbonIcon(sub.icon)}</span>
+                                    <span>${escapeHtml(sub.label)}</span>
+                                </button>
+                            `).join('')}</span>
+                        </div>
+                    `;
+                }
+
+                return `
+                    <button class="home-menu-item ${item.disabled ? 'disabled' : ''} ${item.active ? 'active' : ''}" type="button" data-home-menu-item data-home-value="${escapeHtml(item.label)}" ${item.view ? `data-view="${escapeHtml(item.view)}"` : ''} ${item.disabled ? 'disabled' : ''} style="${item.family ? `font-family:${escapeHtml(item.family)}, sans-serif` : ''}">
+                        ${rowInner}
+                    </button>
+                `;
+            }).join('')}
+        </div>
+    `;
+}
+
+function openHomeMenu(button, key) {
+    if (createMenu?.dataset.owner === `home-${key}`) {
+        closeCreateMenu();
+        return;
+    }
+
+    closeCreateMenu();
+    const box = button.getBoundingClientRect();
+    createMenu = document.createElement('div');
+    createMenu.className = `create-menu home-menu home-menu-${key}`;
+    createMenu.dataset.owner = `home-${key}`;
+    createMenu.innerHTML = buildHomeMenu(key);
+    document.body.appendChild(createMenu);
+    const left = Math.min(box.left, window.innerWidth - createMenu.offsetWidth - 8);
+    createMenu.style.left = `${Math.max(4, left)}px`;
+    createMenu.style.top = `${box.bottom + 1}px`;
+    button.classList.add('active');
+}
+
+function renderHomeRibbon() {
+    closeCreateMenu();
+    ribbon.innerHTML = `
+        <div class="home-ribbon">
+            <div class="home-group" data-label="Views">
+                ${homeBig('design', 'View', { caret: true, menu: 'view' })}
+            </div>
+            <div class="home-group" data-label="Clipboard">
+                ${homeBig('paste', 'Paste', { caret: true, menu: 'paste' })}
+                <div class="home-stack">
+                    ${homeMini('cut', 'Cut', { disabled: true })}
+                    ${homeMini('copy', 'Copy', { disabled: true })}
+                    ${homeMini('format-painter', 'Format Painter', { disabled: true })}
+                </div>
+            </div>
+            <div class="home-group" data-label="Sort & Filter">
+                ${homeBig('filter', 'Filter')}
+                <div class="home-stack">
+                    ${homeMini('sort-asc', 'Ascending')}
+                    ${homeMini('sort-desc', 'Descending')}
+                    ${homeMini('remove-sort', 'Remove Sort', { disabled: true })}
+                </div>
+                <div class="home-stack home-stack-wide">
+                    ${homeMini('selection', 'Selection', { caret: true, menu: 'selection' })}
+                    ${homeMini('advanced', 'Advanced', { caret: true, menu: 'advanced' })}
+                    ${homeMini('toggle-filter', 'Toggle Filter', { disabled: true })}
+                </div>
+            </div>
+            <div class="home-group" data-label="Records">
+                ${homeBig('refresh-all', 'Refresh All', { caret: true })}
+                <div class="home-stack">
+                    ${homeMini('new', 'New', { disabled: true })}
+                    ${homeMini('save', 'Save')}
+                    ${homeMini('delete', 'Delete', { disabled: true, caret: true })}
+                </div>
+                <div class="home-stack">
+                    ${homeMini('totals', 'Totals')}
+                    ${homeMini('spelling', 'Spelling')}
+                    ${homeMini('more', 'More', { caret: true, menu: 'more' })}
+                </div>
+            </div>
+            <div class="home-group" data-label="Find">
+                ${homeBig('find', 'Find')}
+                <div class="home-stack">
+                    ${homeMini('replace', 'Replace')}
+                    ${homeMini('go-to', 'Go To', { caret: true, menu: 'goto' })}
+                    ${homeMini('select', 'Select', { caret: true, menu: 'select' })}
+                </div>
+            </div>
+            <div class="home-group home-text-group" data-label="Text Formatting">
+                <div class="home-format-panel">
+                    <div class="home-format-row">
+                        ${homeSelect('Calibri (Detail)', 'font', 206)}
+                        ${homeSelect('11', 'size', 88)}
+                        ${homeIconButton('bullets', { title: 'Bullets' })}
+                        ${homeIconButton('numbered-list', { title: 'Numbering' })}
+                        ${homeIconButton('indent', { title: 'Increase Indent' })}
+                        ${homeIconButton('outdent', { title: 'Decrease Indent' })}
+                    </div>
+                    <div class="home-format-row">
+                        ${homeIconButton('bold', { title: 'Bold' })}
+                        ${homeIconButton('italic', { title: 'Italic' })}
+                        ${homeIconButton('underline', { title: 'Underline' })}
+                        ${homeIconButton('font-color', { title: 'Font Color', caret: true, menu: 'color' })}
+                        ${homeIconButton('text-highlight', { title: 'Text Highlight' })}
+                        ${homeIconButton('fill-color', { title: 'Fill Color', caret: true, menu: 'color' })}
+                        ${homeIconButton('align-left', { title: 'Align Left' })}
+                        ${homeIconButton('align-center', { title: 'Align Center' })}
+                        ${homeIconButton('align-right', { title: 'Align Right' })}
+                        ${homeIconButton('gridlines', { title: 'Gridlines', caret: true, menu: 'gridlines' })}
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
 }
 
 function ribbonMiniButton(icon, label, options = {}) {
@@ -925,6 +1264,11 @@ function renderFieldsRibbon() {
 function renderRibbon(name) {
     closeMoreFieldsMenu();
     closeCreateMenu();
+    if (name === 'home') {
+        renderHomeRibbon();
+        return;
+    }
+
     if (name === 'create') {
         renderCreateRibbon();
         return;
@@ -1217,6 +1561,7 @@ function renderViewTemplate(view) {
 }
 
 async function loadView(view, options = {}) {
+    closeActiveCellEditor(true);
     const replaceActive = options.replaceActive === true;
     const existingObjectTab = replaceActive ? null : findOpenObjectTab(view);
 
@@ -1435,6 +1780,45 @@ function enableSubformSorting(host, tableDef, rows, columns) {
     });
 }
 
+let activeCellEditor = null;
+
+function positionActiveCellEditor() {
+    if (!activeCellEditor) {
+        return;
+    }
+
+    const { input, cell } = activeCellEditor;
+    if (!cell.isConnected) {
+        closeActiveCellEditor(false);
+        return;
+    }
+
+    const rect = cell.getBoundingClientRect();
+    input.style.left = `${rect.left}px`;
+    input.style.top = `${rect.top}px`;
+    input.style.width = `${rect.width}px`;
+    input.style.height = `${rect.height}px`;
+}
+
+function closeActiveCellEditor(commit = true) {
+    if (!activeCellEditor) {
+        return;
+    }
+
+    const { input, cell, row, column, originalValue } = activeCellEditor;
+    const nextValue = commit ? input.value : originalValue;
+
+    row[column] = nextValue;
+    cell.textContent = nextValue;
+    cell.classList.remove('editing-cell');
+    input.remove();
+    activeCellEditor = null;
+}
+
+function shouldKeepCellEditorOpen(target) {
+    return Boolean(target?.closest?.('.cell-edit-input, header, .create-menu, .more-fields-menu'));
+}
+
 function enableEditableCells(container, rows) {
     container.addEventListener('dblclick', event => {
         const cell = event.target.closest('td[data-column]');
@@ -1448,25 +1832,41 @@ function enableEditableCells(container, rows) {
             return;
         }
 
-        cell.contentEditable = 'true';
+        closeActiveCellEditor(true);
+
+        const column = cell.dataset.column;
+        const originalValue = cell.textContent.trim();
+        const input = document.createElement('input');
+
+        input.type = 'text';
+        input.className = 'cell-edit-input';
+        input.value = originalValue;
+
         cell.classList.add('editing-cell');
-        cell.focus();
-        document.execCommand?.('selectAll', false, null);
-
-        const save = () => {
-            cell.contentEditable = 'false';
-            cell.classList.remove('editing-cell');
-            rows[rowIndex][cell.dataset.column] = cell.textContent.trim();
-            cell.removeEventListener('blur', save);
+        document.body.appendChild(input);
+        activeCellEditor = {
+            input,
+            cell,
+            row: rows[rowIndex],
+            column,
+            originalValue
         };
+        positionActiveCellEditor();
 
-        cell.addEventListener('blur', save);
-        cell.addEventListener('keydown', keyEvent => {
+        input.focus();
+        input.select();
+
+        input.addEventListener('keydown', keyEvent => {
             if (keyEvent.key === 'Enter') {
                 keyEvent.preventDefault();
-                cell.blur();
+                closeActiveCellEditor(true);
             }
-        }, { once: true });
+
+            if (keyEvent.key === 'Escape') {
+                keyEvent.preventDefault();
+                closeActiveCellEditor(false);
+            }
+        });
     });
 }
 
@@ -2310,6 +2710,10 @@ function initQueryBuilders(db) {
 }
 
 document.addEventListener('click', event => {
+    if (activeCellEditor && !shouldKeepCellEditorOpen(event.target)) {
+        closeActiveCellEditor(true);
+    }
+
     const statusButton = event.target.closest('[data-status-view]');
     if (statusButton) {
         activateStatusView(statusButton.dataset.statusView);
@@ -2322,8 +2726,55 @@ document.addEventListener('click', event => {
         return;
     }
 
+    const homeMenuButton = event.target.closest('[data-home-menu]');
+    if (homeMenuButton && !homeMenuButton.closest('.home-menu')) {
+        openHomeMenu(homeMenuButton, homeMenuButton.dataset.homeMenu);
+        return;
+    }
+
     if (createMenu && !event.target.closest('.create-menu')) {
         closeCreateMenu();
+    }
+
+    const homeMenuItem = event.target.closest('[data-home-menu-item]');
+    if (homeMenuItem && event.target.closest('.home-menu')) {
+        const owner = createMenu?.dataset.owner?.replace('home-', '') || '';
+        const value = homeMenuItem.dataset.homeValue || '';
+        const view = homeMenuItem.dataset.view;
+
+        if (owner === 'font' || owner === 'size') {
+            const selectLabel = document.querySelector(`.home-select[data-home-menu="${owner}"] span`);
+            if (selectLabel) {
+                selectLabel.textContent = value;
+            }
+        }
+
+        closeCreateMenu();
+
+        if (view === '@design') {
+            switchTableMode('design');
+            return;
+        }
+
+        if (view === '@datasheet') {
+            switchTableMode('datasheet');
+            return;
+        }
+
+        if (view) {
+            loadView(view);
+            return;
+        }
+
+        status.textContent = value ? `${value} selected` : 'Ready';
+        return;
+    }
+
+    const homeColorItem = event.target.closest('.color-menu button');
+    if (homeColorItem) {
+        closeCreateMenu();
+        status.textContent = 'Color selected';
+        return;
     }
 
     const propertySheetCommand = event.target.closest('[data-command="properties"]');
@@ -2419,6 +2870,35 @@ document.addEventListener('dblclick', event => {
 
     loadView(objectLink.dataset.view);
 });
+
+function isTextEditTarget(target) {
+    return Boolean(target?.closest?.('input, textarea, select, .cell-edit-input'));
+}
+
+document.addEventListener('selectstart', event => {
+    if (!isTextEditTarget(event.target)) {
+        event.preventDefault();
+    }
+}, true);
+
+document.addEventListener('selectionchange', () => {
+    const selection = window.getSelection?.();
+    if (!selection || selection.isCollapsed) {
+        return;
+    }
+
+    const active = document.activeElement;
+    const anchor = selection.anchorNode?.nodeType === Node.ELEMENT_NODE
+        ? selection.anchorNode
+        : selection.anchorNode?.parentElement;
+
+    if (!isTextEditTarget(active) && !isTextEditTarget(anchor)) {
+        selection.removeAllRanges();
+    }
+});
+
+document.addEventListener('scroll', positionActiveCellEditor, true);
+window.addEventListener('resize', positionActiveCellEditor);
 
 async function bootstrapApp() {
     activateRibbonTab('home');
