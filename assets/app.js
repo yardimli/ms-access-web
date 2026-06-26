@@ -82,13 +82,17 @@ const workspaceMain = document.querySelector('#workspace-main');
 const objectPane = document.querySelector('#object-pane');
 const contextualToolsLabel = document.querySelector('#contextual-tools-label');
 const tableToolsTabs = document.querySelector('#table-tools-tabs');
+const formToolsTabs = document.querySelector('#form-tools-tabs');
 const objectList = document.querySelector('#object-list');
+const statusViewButtons = document.querySelector('#status-view-buttons');
 
 let databasePromise = null;
 let currentView = app.dataset.initialView || 'table-customers';
 let openTabs = [];
 let currentRibbon = 'home';
 let moreFieldsMenu = null;
+let createMenu = null;
+let statusModeOverride = null;
 
 const moreFieldsGroups = [
     ['Basic Types', [
@@ -133,6 +137,39 @@ const moreFieldsGroups = [
         ['calculated', 'Calculated Field'],
         ['save-as', 'Save Selection as New Data Type']
     ]]
+];
+
+const createDropdowns = {
+    navigation: [
+        ['navigation', 'Horizontal Tabs'],
+        ['navigation', 'Vertical Tabs, Left'],
+        ['navigation', 'Vertical Tabs, Right'],
+        ['navigation', 'Horizontal Tabs, 2 Levels'],
+        ['navigation', 'Horizontal Tabs and Vertical Tabs, Left'],
+        ['navigation', 'Horizontal Tabs and Vertical Tabs, Right']
+    ],
+    'more-forms': [
+        ['form', 'Multiple Items'],
+        ['table', 'Datasheet'],
+        ['split-form', 'Split Form'],
+        ['modal-dialog', 'Modal Dialog']
+    ]
+};
+
+const tableDataTypes = [
+    'Short Text',
+    'Long Text',
+    'Number',
+    'Large Number',
+    'Date/Time',
+    'Currency',
+    'AutoNumber',
+    'Yes/No',
+    'OLE Object',
+    'Hyperlink',
+    'Attachment',
+    'Calculated',
+    'Lookup Wizard...'
 ];
 
 let tableViewPairs = {};
@@ -181,10 +218,19 @@ function getDatabase() {
                 throw new Error('Unable to load database from MariaDB');
             }
             return response.json();
-        }).then(data => normalizeDatabaseReferences(data));
+        });
     }
 
     return databasePromise;
+}
+
+function mergeViewData(db, data = {}) {
+    db.tables = { ...(db.tables || {}), ...(data.tables || {}) };
+    db.forms = { ...(db.forms || {}), ...(data.forms || {}) };
+    db.queries = { ...(db.queries || {}), ...(data.queries || {}) };
+    db.reports = { ...(db.reports || {}), ...(data.reports || {}) };
+    normalizeDatabaseReferences(db);
+    return db;
 }
 
 function resolveTableName(db, tableName) {
@@ -344,8 +390,67 @@ function ribbonIcon(name) {
         italic: 'fas fa-italic',
         align: 'fas fa-align-left',
         form: 'fas fa-window-restore',
+        'form-design': 'fas fa-pencil-ruler',
+        'blank-form': 'far fa-window-maximize',
+        'form-wizard': 'fas fa-magic',
+        navigation: 'far fa-window-restore',
+        'more-forms': 'fas fa-caret-square-down',
+        'split-form': 'fas fa-columns',
+        'modal-dialog': 'far fa-window-maximize',
+        themes: 'fas fa-palette',
+        colors: 'fas fa-th-large',
+        font: 'fas fa-font',
+        pointer: 'fas fa-mouse-pointer',
+        label: 'fas fa-font',
+        'button-control': 'far fa-square',
+        folder: 'far fa-folder',
+        'web-browser': 'fas fa-globe',
+        subform: 'far fa-window-restore',
+        image: 'far fa-image',
+        chart: 'fas fa-chart-bar',
+        logo: 'far fa-image',
+        title: 'far fa-file-alt',
+        'add-fields': 'fas fa-columns',
+        'tab-order': 'fas fa-sort-numeric-down',
+        gridlines: 'fas fa-border-all',
+        stacked: 'fas fa-th-list',
+        tabular: 'fas fa-table',
+        'remove-layout': 'fas fa-eraser',
+        'insert-above': 'fas fa-arrow-up',
+        'insert-below': 'fas fa-arrow-down',
+        'insert-left': 'fas fa-arrow-left',
+        'insert-right': 'fas fa-arrow-right',
+        'select-layout': 'far fa-object-group',
+        'select-column': 'fas fa-columns',
+        merge: 'fas fa-compress-arrows-alt',
+        'split-vertical': 'fas fa-columns',
+        'split-horizontal': 'fas fa-grip-lines',
+        'move-up': 'fas fa-arrow-up',
+        'move-down': 'fas fa-arrow-down',
+        margins: 'fas fa-text-width',
+        padding: 'fas fa-border-style',
+        anchoring: 'fas fa-anchor',
+        'size-space': 'fas fa-arrows-alt',
+        'bring-front': 'fas fa-clone',
+        'send-back': 'far fa-clone',
+        'select-all': 'fas fa-mouse-pointer',
+        'alternate-row': 'fas fa-fill-drip',
+        'quick-styles': 'fas fa-paint-brush',
+        'change-shape': 'fas fa-shapes',
+        conditional: 'fas fa-list-ol',
+        'shape-fill': 'fas fa-fill',
+        'shape-outline': 'far fa-square',
+        'shape-effects': 'fas fa-magic',
         report: 'fas fa-file-alt',
+        'report-design': 'fas fa-chart-bar',
+        'blank-report': 'far fa-file',
+        'report-wizard': 'fas fa-magic',
+        labels: 'fas fa-tags',
         query: 'fas fa-project-diagram',
+        'query-wizard': 'fas fa-magic',
+        sharepoint: 'fas fa-list-alt',
+        module: 'fas fa-cubes',
+        'class-module': 'fas fa-code-branch',
         relationships: 'fas fa-link',
         excel: 'fas fa-file-excel',
         access: 'fas fa-database',
@@ -422,6 +527,12 @@ function closeMoreFieldsMenu() {
     document.querySelector('[data-command="more-fields"]')?.classList.remove('active');
 }
 
+function closeCreateMenu() {
+    createMenu?.remove();
+    createMenu = null;
+    document.querySelector('.create-command.active, .create-mini.active')?.classList.remove('active');
+}
+
 function buildMoreFieldsMenu() {
     return `
         <div class="more-fields-scroll">
@@ -464,6 +575,38 @@ function openMoreFieldsMenu(button) {
     button.classList.add('active');
 }
 
+function buildCreateMenu(items) {
+    return `
+        <div class="create-menu-list">
+            ${items.map(([icon, label]) => `
+                <button class="create-menu-item" type="button">
+                    <span>${ribbonIcon(icon)}</span>
+                    <strong>${escapeHtml(label)}</strong>
+                </button>
+            `).join('')}
+        </div>
+    `;
+}
+
+function openCreateMenu(button, key) {
+    if (createMenu?.dataset.owner === key) {
+        closeCreateMenu();
+        return;
+    }
+
+    closeCreateMenu();
+    const items = createDropdowns[key] || [];
+    const box = button.getBoundingClientRect();
+    createMenu = document.createElement('div');
+    createMenu.className = 'create-menu';
+    createMenu.dataset.owner = key;
+    createMenu.innerHTML = buildCreateMenu(items);
+    document.body.appendChild(createMenu);
+    createMenu.style.left = `${Math.max(4, Math.min(box.left, window.innerWidth - createMenu.offsetWidth - 8))}px`;
+    createMenu.style.top = `${box.bottom + 1}px`;
+    button.classList.add('active');
+}
+
 function ribbonMiniButton(icon, label, options = {}) {
     const classes = ['fields-mini'];
     if (options.disabled) classes.push('disabled');
@@ -488,6 +631,234 @@ function ribbonBigButton(icon, label, options = {}) {
             <span>${escapeHtml(label)}</span>
             ${options.caret ? '<i class="fas fa-caret-down fields-caret"></i>' : ''}
         </button>
+    `;
+}
+
+function createCommand(icon, label, options = {}) {
+    return `
+        <button class="create-command" type="button" data-command="${escapeHtml(icon)}" ${options.view ? `data-view="${options.view}"` : ''} ${options.menu ? `data-create-menu="${options.menu}"` : ''}>
+            <span class="create-command-icon">${ribbonIcon(icon)}</span>
+            <span>${escapeHtml(label)}</span>
+            ${options.caret ? '<i class="fas fa-caret-down create-caret"></i>' : ''}
+        </button>
+    `;
+}
+
+function createMini(icon, label, options = {}) {
+    return `
+        <button class="create-mini" type="button" data-command="${escapeHtml(icon)}" ${options.view ? `data-view="${options.view}"` : ''} ${options.menu ? `data-create-menu="${options.menu}"` : ''}>
+            <span>${ribbonIcon(icon)}</span>
+            <span>${escapeHtml(label)}</span>
+            ${options.caret ? '<i class="fas fa-caret-down create-caret"></i>' : ''}
+        </button>
+    `;
+}
+
+function renderCreateRibbon() {
+    closeCreateMenu();
+    ribbon.innerHTML = `
+        <div class="create-ribbon">
+            <div class="create-group" data-label="Tables">
+                ${createCommand('table', 'Table')}
+                ${createCommand('design', 'Table Design', { view: 'table-detail' })}
+                ${createCommand('sharepoint', 'SharePoint Lists', { caret: true })}
+            </div>
+            <div class="create-group" data-label="Queries">
+                ${createCommand('query-wizard', 'Query Wizard')}
+                ${createCommand('query', 'Query Design', { view: 'query-sales-by-region' })}
+            </div>
+            <div class="create-group create-forms-group" data-label="Forms">
+                ${createCommand('form', 'Form')}
+                ${createCommand('form-design', 'Form Design')}
+                ${createCommand('blank-form', 'Blank Form')}
+                <div class="create-stack">
+                    ${createMini('form-wizard', 'Form Wizard')}
+                    ${createMini('navigation', 'Navigation', { caret: true, menu: 'navigation' })}
+                    ${createMini('more-forms', 'More Forms', { caret: true, menu: 'more-forms' })}
+                </div>
+            </div>
+            <div class="create-group create-reports-group" data-label="Reports">
+                ${createCommand('report', 'Report')}
+                ${createCommand('report-design', 'Report Design')}
+                ${createCommand('blank-report', 'Blank Report')}
+                <div class="create-stack">
+                    ${createMini('report-wizard', 'Report Wizard')}
+                    ${createMini('labels', 'Labels')}
+                </div>
+            </div>
+            <div class="create-group" data-label="Macros & Code">
+                ${createCommand('macro', 'Macro')}
+                <div class="create-stack">
+                    ${createMini('module', 'Module')}
+                    ${createMini('class-module', 'Class Module')}
+                    ${createMini('code', 'Visual Basic')}
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function designCommand(icon, label, options = {}) {
+    return `
+        <button class="design-command ${options.disabled ? 'disabled' : ''}" type="button" data-command="${escapeHtml(icon)}" ${options.view ? `data-view="${options.view}"` : ''} ${options.disabled ? 'disabled' : ''}>
+            <span class="design-command-icon">${ribbonIcon(icon)}</span>
+            <span>${escapeHtml(label)}</span>
+            ${options.caret ? '<i class="fas fa-caret-down create-caret"></i>' : ''}
+        </button>
+    `;
+}
+
+function designMini(icon, label, options = {}) {
+    return `
+        <button class="design-mini ${options.disabled ? 'disabled' : ''}" type="button" data-command="${escapeHtml(icon)}" ${options.disabled ? 'disabled' : ''}>
+            <span>${ribbonIcon(icon)}</span>
+            <span>${escapeHtml(label)}</span>
+        </button>
+    `;
+}
+
+function renderTableDesignRibbon() {
+    ribbon.innerHTML = `
+        <div class="table-design-ribbon">
+            <div class="design-ribbon-group" data-label="Views">
+                ${designCommand('grid', 'View', { view: '@datasheet', caret: true })}
+            </div>
+            <div class="design-ribbon-group design-tools-group" data-label="Tools">
+                ${designCommand('primary-key', 'Primary Key', { disabled: true })}
+                ${designCommand('builder', 'Builder', { disabled: true })}
+                ${designCommand('test-validation', 'Test Validation Rules', { disabled: true })}
+                <div class="design-stack">
+                    ${designMini('insert-row', 'Insert Rows', { disabled: true })}
+                    ${designMini('delete', 'Delete Rows', { disabled: true })}
+                    ${designMini('lookup', 'Modify Lookups', { disabled: true })}
+                </div>
+            </div>
+            <div class="design-ribbon-group" data-label="Show/Hide">
+                ${designCommand('properties', 'Property Sheet')}
+                ${designCommand('index', 'Indexes')}
+            </div>
+            <div class="design-ribbon-group" data-label="Field, Record & Table Events">
+                ${designCommand('macro', 'Create Data Macros', { disabled: true, caret: true })}
+                ${designCommand('rename', 'Rename/Delete Macro')}
+            </div>
+            <div class="design-ribbon-group" data-label="Relationships">
+                ${designCommand('relationships', 'Relationships')}
+                ${designCommand('deps', 'Object Dependencies')}
+            </div>
+        </div>
+    `;
+}
+
+function formRibbonCommand(icon, label, options = {}) {
+    return `
+        <button class="form-ribbon-command" type="button" data-command="${escapeHtml(icon)}" ${options.view ? `data-view="${options.view}"` : ''}>
+            <span class="form-ribbon-icon">${ribbonIcon(icon)}</span>
+            <span>${escapeHtml(label)}</span>
+            ${options.caret ? '<i class="fas fa-caret-down create-caret"></i>' : ''}
+        </button>
+    `;
+}
+
+function formRibbonMini(icon, label, options = {}) {
+    return `
+        <button class="form-ribbon-mini" type="button" data-command="${escapeHtml(icon)}">
+            <span>${ribbonIcon(icon)}</span>
+            <span>${escapeHtml(label)}</span>
+            ${options.caret ? '<i class="fas fa-caret-down create-caret"></i>' : ''}
+        </button>
+    `;
+}
+
+function renderFormDesignRibbon() {
+    ribbon.innerHTML = `
+        <div class="form-design-ribbon">
+            <div class="form-ribbon-group" data-label="Views">${formRibbonCommand('grid', 'View', { caret: true })}</div>
+            <div class="form-ribbon-group" data-label="Themes">
+                ${formRibbonCommand('themes', 'Themes', { caret: true })}
+                <div class="form-ribbon-stack">
+                    ${formRibbonMini('colors', 'Colors', { caret: true })}
+                    ${formRibbonMini('font', 'Fonts', { caret: true })}
+                </div>
+            </div>
+            <div class="form-ribbon-group form-controls-group" data-label="Controls">
+                ${formRibbonCommand('pointer', 'Select')}
+                ${formRibbonCommand('text-field', 'Text Box')}
+                ${formRibbonCommand('label', 'Label')}
+                ${formRibbonCommand('button-control', 'Button')}
+                ${formRibbonCommand('folder', 'Tab')}
+                ${formRibbonCommand('hyperlink', 'Hyperlink')}
+                ${formRibbonCommand('web-browser', 'Web Browser')}
+                ${formRibbonCommand('subform', 'Subform')}
+                ${formRibbonCommand('image', 'Insert Image', { caret: true })}
+                ${formRibbonCommand('chart', 'Insert Modern Chart', { caret: true })}
+            </div>
+            <div class="form-ribbon-group" data-label="Header / Footer">
+                <div class="form-ribbon-stack">
+                    ${formRibbonMini('logo', 'Logo')}
+                    ${formRibbonMini('title', 'Title')}
+                    ${formRibbonMini('date', 'Date and Time')}
+                </div>
+            </div>
+            <div class="form-ribbon-group" data-label="Tools">
+                ${formRibbonCommand('add-fields', 'Add Existing Fields')}
+                ${formRibbonCommand('properties', 'Property Sheet')}
+                ${formRibbonCommand('tab-order', 'Tab Order')}
+                ${formRibbonCommand('chart', 'Chart Settings')}
+            </div>
+        </div>
+    `;
+}
+
+function renderFormArrangeRibbon() {
+    ribbon.innerHTML = `
+        <div class="form-design-ribbon">
+            <div class="form-ribbon-group" data-label="Table">
+                ${formRibbonCommand('gridlines', 'Gridlines', { caret: true })}
+                ${formRibbonCommand('stacked', 'Stacked')}
+                ${formRibbonCommand('tabular', 'Tabular')}
+                ${formRibbonCommand('remove-layout', 'Remove Layout')}
+            </div>
+            <div class="form-ribbon-group" data-label="Rows & Columns">
+                <div class="form-ribbon-stack">
+                    ${formRibbonMini('insert-above', 'Insert Above')}
+                    ${formRibbonMini('insert-below', 'Insert Below')}
+                    ${formRibbonMini('insert-left', 'Insert Left')}
+                </div>
+                <div class="form-ribbon-stack">
+                    ${formRibbonMini('insert-right', 'Insert Right')}
+                    ${formRibbonMini('select-layout', 'Select Layout')}
+                    ${formRibbonMini('select-column', 'Select Column')}
+                </div>
+            </div>
+            <div class="form-ribbon-group" data-label="Merge / Split">${formRibbonCommand('merge', 'Merge')}${formRibbonCommand('split-vertical', 'Split Vertically')}${formRibbonCommand('split-horizontal', 'Split Horizontally')}</div>
+            <div class="form-ribbon-group" data-label="Move">${formRibbonCommand('move-up', 'Move Up')}${formRibbonCommand('move-down', 'Move Down')}</div>
+            <div class="form-ribbon-group" data-label="Position">${formRibbonCommand('margins', 'Control Margins', { caret: true })}${formRibbonCommand('padding', 'Control Padding', { caret: true })}${formRibbonCommand('anchoring', 'Anchoring', { caret: true })}</div>
+            <div class="form-ribbon-group" data-label="Sizing & Ordering">${formRibbonCommand('size-space', 'Size/Space', { caret: true })}${formRibbonCommand('align', 'Align', { caret: true })}${formRibbonCommand('bring-front', 'Bring to Front')}${formRibbonCommand('send-back', 'Send to Back')}</div>
+        </div>
+    `;
+}
+
+function renderFormFormatRibbon() {
+    ribbon.innerHTML = `
+        <div class="form-design-ribbon">
+            <div class="form-ribbon-group" data-label="Selection">
+                <div class="form-selection-box"><i class="fas fa-sliders-h"></i><select><option>Form</option><option>Detail</option><option>Text Box</option></select></div>
+                ${formRibbonMini('select-all', 'Select All')}
+            </div>
+            <div class="form-ribbon-group" data-label="Font">
+                <div class="form-ribbon-stack wide">
+                    <select><option>Calibri</option></select>
+                    <select><option>11</option></select>
+                    <div class="mini-icon-row"><button>B</button><button><i>I</i></button><button><u>U</u></button><button>A</button></div>
+                </div>
+            </div>
+            <div class="form-ribbon-group" data-label="Number">
+                <select><option>Formatting</option></select>
+                <div class="mini-icon-row"><button>$</button><button>%</button><button>,</button><button>.0</button><button>.00</button></div>
+            </div>
+            <div class="form-ribbon-group" data-label="Background">${formRibbonCommand('image', 'Background Image', { caret: true })}${formRibbonCommand('alternate-row', 'Alternate Row Color', { caret: true })}</div>
+            <div class="form-ribbon-group" data-label="Control Formatting">${formRibbonCommand('quick-styles', 'Quick Styles')}${formRibbonCommand('change-shape', 'Change Shape')}${formRibbonCommand('conditional', 'Conditional Formatting')}${formRibbonCommand('shape-fill', 'Shape Fill')}${formRibbonCommand('shape-outline', 'Shape Outline')}${formRibbonCommand('shape-effects', 'Shape Effects')}</div>
+        </div>
     `;
 }
 
@@ -553,8 +924,34 @@ function renderFieldsRibbon() {
 
 function renderRibbon(name) {
     closeMoreFieldsMenu();
+    closeCreateMenu();
+    if (name === 'create') {
+        renderCreateRibbon();
+        return;
+    }
+
     if (name === 'fields') {
         renderFieldsRibbon();
+        return;
+    }
+
+    if (name === 'table-design') {
+        renderTableDesignRibbon();
+        return;
+    }
+
+    if (name === 'form-design') {
+        renderFormDesignRibbon();
+        return;
+    }
+
+    if (name === 'form-arrange') {
+        renderFormArrangeRibbon();
+        return;
+    }
+
+    if (name === 'form-format') {
+        renderFormFormatRibbon();
         return;
     }
 
@@ -583,9 +980,12 @@ function updateContextualRibbon(view) {
     const tableDatasheet = isTableDatasheetView(view);
     const tableDesign = isTableDesignView(view);
     const showTableTools = tableDatasheet || tableDesign;
+    const formDesign = view.startsWith('design-form-');
 
-    contextualToolsLabel?.classList.toggle('hidden', !showTableTools);
+    contextualToolsLabel.textContent = formDesign ? 'Form Design Tools' : 'Table Tools';
+    contextualToolsLabel?.classList.toggle('hidden', !showTableTools && !formDesign);
     tableToolsTabs?.classList.toggle('hidden', !showTableTools);
+    formToolsTabs?.classList.toggle('hidden', !formDesign);
     document.querySelectorAll('[data-table-context="datasheet"]').forEach(tab => {
         tab.classList.toggle('hidden', !tableDatasheet);
     });
@@ -598,12 +998,17 @@ function updateContextualRibbon(view) {
         return;
     }
 
+    if (formDesign && !['form-design', 'form-arrange', 'form-format'].includes(currentRibbon)) {
+        activateRibbonTab('form-design');
+        return;
+    }
+
     if (tableDatasheet && !['fields', 'table'].includes(currentRibbon)) {
         activateRibbonTab('fields');
         return;
     }
 
-    if (!showTableTools && ['fields', 'table', 'table-design'].includes(currentRibbon)) {
+    if (!showTableTools && !formDesign && ['fields', 'table', 'table-design', 'form-design', 'form-arrange', 'form-format'].includes(currentRibbon)) {
         activateRibbonTab('home');
     }
 }
@@ -627,9 +1032,113 @@ function findTabIndex(view) {
     return openTabs.findIndex(tab => tab.view === view);
 }
 
+function objectTabKey(view) {
+    if (designViewPairs[view]) {
+        return designViewPairs[view];
+    }
+
+    if (tableViewPairs[view]) {
+        return view;
+    }
+
+    if (formDesignViewPairs[view]) {
+        return formDesignViewPairs[view];
+    }
+
+    if (formViewPairs[view]) {
+        return view;
+    }
+
+    return view;
+}
+
 function findOpenObjectTab(view) {
-    const objectView = designViewPairs[view] || formDesignViewPairs[view] || view;
-    return openTabs.find(tab => tab.view === objectView || designViewPairs[tab.view] === objectView || formDesignViewPairs[tab.view] === objectView);
+    const objectKey = objectTabKey(view);
+    return openTabs.find(tab => objectTabKey(tab.view) === objectKey);
+}
+
+function activeObjectKind(view = currentView) {
+    if (isTableDatasheetView(view) || isTableDesignView(view)) return 'table';
+    if (view.startsWith('form-') || view.startsWith('design-form-')) return 'form';
+    if (view.startsWith('query-')) return 'query';
+    if (view === 'report' || view.startsWith('report-')) return 'report';
+    return 'object';
+}
+
+function activeViewMode(view = currentView) {
+    if (isTableDesignView(view)) return 'design';
+    if (isTableDatasheetView(view)) return 'datasheet';
+    if (view.startsWith('design-form-')) return 'design';
+    if (view.startsWith('form-')) return statusModeOverride || 'form';
+    if (view.startsWith('query-')) return statusModeOverride || 'design';
+    if (view === 'report' || view.startsWith('report-')) return statusModeOverride || 'report';
+    return '';
+}
+
+function statusModesForCurrentView() {
+    const kind = activeObjectKind();
+    if (kind === 'table') {
+        return [
+            ['datasheet', 'Datasheet View', 'fas fa-table'],
+            ['design', 'Design View', 'fas fa-pencil-ruler']
+        ];
+    }
+    if (kind === 'form') {
+        return [
+            ['form', 'Form View', 'fas fa-window-restore'],
+            ['layout', 'Layout View', 'fas fa-object-group'],
+            ['design', 'Design View', 'fas fa-pencil-ruler']
+        ];
+    }
+    if (kind === 'query') {
+        return [
+            ['datasheet', 'Datasheet View', 'fas fa-table'],
+            ['sql', 'SQL View', 'fas fa-code'],
+            ['design', 'Design View', 'fas fa-project-diagram']
+        ];
+    }
+    if (kind === 'report') {
+        return [
+            ['report', 'Report View', 'fas fa-file-alt'],
+            ['print', 'Print Preview', 'fas fa-search-plus'],
+            ['layout', 'Layout View', 'fas fa-object-group'],
+            ['design', 'Design View', 'fas fa-pencil-ruler']
+        ];
+    }
+    return [];
+}
+
+function renderStatusViewButtons() {
+    const modes = statusModesForCurrentView();
+    const active = activeViewMode();
+    statusViewButtons.innerHTML = modes.map(([mode, label, icon]) => `
+        <button class="status-view-btn ${mode === active ? 'active' : ''}" type="button" data-status-view="${mode}" title="${escapeHtml(label)}">
+            <i class="${icon}"></i>
+        </button>
+    `).join('');
+}
+
+function setSoftViewMode(mode, label) {
+    statusModeOverride = mode;
+    status.textContent = label;
+    renderStatusViewButtons();
+}
+
+function activateStatusView(mode) {
+    const kind = activeObjectKind();
+    if ((kind === 'table' || kind === 'form') && mode === 'design') {
+        statusModeOverride = null;
+        switchTableMode('design');
+        return;
+    }
+    if ((kind === 'table' && mode === 'datasheet') || (kind === 'form' && mode === 'form')) {
+        statusModeOverride = null;
+        switchTableMode('datasheet');
+        return;
+    }
+
+    const label = statusModesForCurrentView().find(([value]) => value === mode)?.[1] || 'Ready';
+    setSoftViewMode(mode, label);
 }
 
 function getTabIcon(view) {
@@ -671,9 +1180,51 @@ function renderDocumentTabs() {
     `;
 }
 
+function templateIdForView(view) {
+    if (view.type === 'table' && view.mode === 'design') return 'template-table-design';
+    if (view.type === 'table') return 'template-table-datasheet';
+    if (view.type === 'form' && view.mode === 'design') return 'template-form-design';
+    if (view.type === 'form') return 'template-form-view';
+    if (view.type === 'query') return 'template-query-builder';
+    if (view.type === 'report') return 'template-report-view';
+    return '';
+}
+
+function renderViewTemplate(view) {
+    const template = document.querySelector(`#${templateIdForView(view)}`);
+    if (!template) {
+        content.innerHTML = '<div class="p-6 text-red-700">The selected view template was not found.</div>';
+        return null;
+    }
+
+    const fragment = template.content.cloneNode(true);
+    const shell = fragment.querySelector('.view-shell');
+    if (shell) {
+        shell.dataset.title = view.title || view.object || 'Object';
+        shell.dataset.status = view.status || 'Ready';
+    }
+
+    const objectTargets = fragment.querySelectorAll('[data-table-id], [data-form-id], [data-query-id], [data-report-id]');
+    objectTargets.forEach(target => {
+        if (target.hasAttribute('data-table-id')) target.dataset.tableId = view.object;
+        if (target.hasAttribute('data-form-id')) target.dataset.formId = view.object;
+        if (target.hasAttribute('data-query-id')) target.dataset.queryId = view.object;
+        if (target.hasAttribute('data-report-id')) target.dataset.reportId = view.object;
+    });
+
+    content.replaceChildren(fragment);
+    return content.querySelector('.view-shell');
+}
+
 async function loadView(view, options = {}) {
-    const existingIndex = findTabIndex(view);
     const replaceActive = options.replaceActive === true;
+    const existingObjectTab = replaceActive ? null : findOpenObjectTab(view);
+
+    if (existingObjectTab) {
+        view = existingObjectTab.view;
+    }
+
+    const existingIndex = findTabIndex(view);
 
     if (replaceActive && openTabs.length) {
         const activeIndex = Math.max(0, findTabIndex(currentView));
@@ -689,9 +1240,10 @@ async function loadView(view, options = {}) {
     }
 
     currentView = view;
+    statusModeOverride = null;
     content.innerHTML = '<div class="p-6 text-neutral-500">Loading...</div>';
     renderDocumentTabs();
-    const response = await fetch(`partial.php?view=${encodeURIComponent(view)}`, {
+    const response = await fetch(`api/view.php?view=${encodeURIComponent(view)}`, {
         headers: { 'X-Requested-With': 'XMLHttpRequest' }
     });
 
@@ -700,8 +1252,17 @@ async function loadView(view, options = {}) {
         return;
     }
 
-    content.innerHTML = await response.text();
-    const shell = content.querySelector('.view-shell');
+    const payload = await response.json();
+    const db = await getDatabase();
+    if (payload.ok) {
+        mergeViewData(db, payload.view?.data);
+    }
+
+    const shell = payload.ok ? renderViewTemplate(payload.view) : null;
+    if (!shell) {
+        return;
+    }
+
     const title = shell?.dataset.title || viewTitles[view] || 'Object';
     const activeTab = openTabs[findTabIndex(view)];
     if (activeTab) {
@@ -711,6 +1272,7 @@ async function loadView(view, options = {}) {
     status.textContent = shell?.dataset.status || 'Ready';
     setActiveObject(view);
     updateContextualRibbon(view);
+    renderStatusViewButtons();
     await initCurrentView();
 }
 
@@ -729,6 +1291,7 @@ function closeActiveTab() {
         renderDocumentTabs();
         setActiveObject('');
         updateContextualRibbon('');
+        renderStatusViewButtons();
         return;
     }
 
@@ -1003,18 +1566,82 @@ function initDesignViews(db) {
         const tableName = view.dataset.tableId;
         const tableDef = db.tables[tableName];
         const columns = tableDef.structure.columns;
-        const propertyRows = [
-            ['Read Only When Disconnected', 'No'],
-            ['Subdatasheet Expanded', 'No'],
-            ['Subdatasheet Height', '0"'],
-            ['Orientation', 'Left-to-Right'],
-            ['Default View', 'Datasheet'],
-            ['Filter', ''],
-            ['Order By', ''],
-            ['Subdatasheet Name', '[Auto]'],
-            ['Filter On Load', 'No'],
-            ['Order By On Load', 'Yes']
-        ];
+        let selectedIndex = 0;
+
+        function fieldSizeFor(column) {
+            if (['AutoNumber', 'Large Number', 'Number'].includes(column.type)) return 'Long Integer';
+            if (column.type === 'Currency') return 'Currency';
+            if (column.type === 'Yes/No') return 'Yes/No';
+            if (column.type === 'Date/Time') return 'General Date';
+            return '255';
+        }
+
+        function fieldPropertiesFor(column) {
+            const isPrimary = column.name === tableDef.structure.primaryKey;
+            const rows = [['Field Size', fieldSizeFor(column)]];
+            if (column.type === 'AutoNumber') rows.push(['New Values', 'Increment']);
+            if (['Number', 'Currency', 'Date/Time'].includes(column.type)) rows.push(['Format', '']);
+            if (column.type === 'Number') rows.push(['Decimal Places', 'Auto']);
+            rows.push(
+                ['Input Mask', ''],
+                ['Caption', ''],
+                ['Default Value', ''],
+                ['Validation Rule', ''],
+                ['Validation Text', ''],
+                ['Required', isPrimary ? 'Yes' : 'No'],
+                ['Allow Zero Length', column.type === 'Short Text' ? 'Yes' : ''],
+                ['Indexed', isPrimary ? 'Yes (No Duplicates)' : 'No'],
+                ['Unicode Compression', column.type === 'Short Text' ? 'Yes' : ''],
+                ['IME Mode', column.type === 'Short Text' ? 'No Control' : ''],
+                ['IME Sentence Mode', column.type === 'Short Text' ? 'None' : ''],
+                ['Text Align', 'General']
+            );
+            return rows;
+        }
+
+        function renderFieldProperties() {
+            const column = columns[selectedIndex] || columns[0];
+            const host = view.querySelector('[data-field-property-grid]');
+            if (!host || !column) return;
+            host.innerHTML = fieldPropertiesFor(column).map(([label, value]) => `<div class="prop-label">${escapeHtml(label)}</div><div class="prop-value">${escapeHtml(value)}</div>`).join('');
+        }
+
+        function renderPropertySheet() {
+            const column = columns[selectedIndex] || columns[0];
+            const host = view.querySelector('[data-property-sheet-grid]');
+            if (!host || !column) return;
+            view.querySelector('[data-selection-type]').textContent = 'Selection type: Field Properties';
+            host.innerHTML = [
+                ['Name', column.name],
+                ['Data Type', column.type],
+                ['Primary Key', column.name === tableDef.structure.primaryKey ? 'Yes' : 'No'],
+                ['Indexed', column.name === tableDef.structure.primaryKey ? 'Yes (No Duplicates)' : 'No'],
+                ['Required', column.name === tableDef.structure.primaryKey ? 'Yes' : 'No'],
+                ['Caption', ''],
+                ['Validation Rule', ''],
+                ['Text Align', 'General']
+            ].map(([label, value]) => `<div class="prop-label">${escapeHtml(label)}</div><div class="prop-value">${escapeHtml(value)}</div>`).join('');
+        }
+
+        function selectDesignRow(index) {
+            selectedIndex = Math.max(0, Math.min(columns.length - 1, index));
+            view.querySelectorAll('[data-design-row]').forEach(row => {
+                const selected = Number(row.dataset.designRow) === selectedIndex;
+                row.classList.toggle('editing', selected);
+                row.querySelector('.row-head').textContent = selected ? '*' : '';
+            });
+            renderFieldProperties();
+            renderPropertySheet();
+        }
+
+        function openTypeDropdown(cell, index) {
+            view.querySelector('.design-type-menu')?.remove();
+            const menu = document.createElement('div');
+            menu.className = 'design-type-menu';
+            menu.innerHTML = tableDataTypes.map(type => `<button class="${type === columns[index].type ? 'selected' : ''}" type="button" data-type-value="${escapeHtml(type)}">${escapeHtml(type)}</button>`).join('');
+            cell.appendChild(menu);
+        }
+
         view.innerHTML = `
             <div class="table-design-layout">
                 <div class="table-design-main">
@@ -1030,10 +1657,13 @@ function initDesignViews(db) {
                             </thead>
                             <tbody>
                                 ${columns.map((column, index) => `
-                                    <tr class="${index === 0 ? 'editing' : ''}">
+                                    <tr class="${index === 0 ? 'editing' : ''}" data-design-row="${index}">
                                         <td class="row-head">${index === 0 ? '*' : ''}</td>
                                         <td>${escapeHtml(column.name)}</td>
-                                        <td>${escapeHtml(column.type)}</td>
+                                        <td class="design-type-cell" data-type-cell="${index}">
+                                            <span>${escapeHtml(column.type)}</span>
+                                            <button class="design-type-button" type="button"><i class="fas fa-caret-down"></i></button>
+                                        </td>
                                         <td>${column.name === tableDef.structure.primaryKey ? 'Primary key' : ''}</td>
                                     </tr>
                                 `).join('')}
@@ -1046,30 +1676,61 @@ function initDesignViews(db) {
                         <div class="field-properties-body">
                             <div>
                                 <div class="field-tabs"><button class="active">General</button><button>Lookup</button></div>
-                                <div class="property-grid">
-                                    <div class="prop-label">Field Size</div><div class="prop-value">${columns[0]?.type === 'AutoNumber' ? 'Long Integer' : '255'}</div>
-                                    <div class="prop-label">New Values</div><div class="prop-value">Increment</div>
-                                    <div class="prop-label">Format</div><div class="prop-value"></div>
-                                    <div class="prop-label">Caption</div><div class="prop-value"></div>
-                                    <div class="prop-label">Indexed</div><div class="prop-value">${columns[0]?.name === tableDef.structure.primaryKey ? 'Yes (No Duplicates)' : 'No'}</div>
-                                    <div class="prop-label">Text Align</div><div class="prop-value">General</div>
-                                </div>
+                                <div class="property-grid" data-field-property-grid></div>
                             </div>
                             <p>A field name can be up to 64 characters long, including spaces. Press F1 for help on field names.</p>
                         </div>
                     </section>
                 </div>
-                <aside class="property-sheet">
-                    <button class="property-close">x</button>
+                <aside class="property-sheet" data-property-sheet>
+                    <button class="property-close" title="Close Property Sheet"><i class="fas fa-times"></i></button>
                     <h2>Property Sheet</h2>
-                    <p>Selection type: Table Properties</p>
+                    <p data-selection-type>Selection type: Field Properties</p>
                     <div class="field-tabs"><button class="active">General</button></div>
-                    <div class="property-grid">
-                        ${propertyRows.map(([label, value]) => `<div class="prop-label">${escapeHtml(label)}</div><div class="prop-value">${escapeHtml(value)}</div>`).join('')}
-                    </div>
+                    <div class="property-grid" data-property-sheet-grid></div>
                 </aside>
             </div>
         `;
+        renderFieldProperties();
+        renderPropertySheet();
+
+        view.addEventListener('click', event => {
+            const typeValue = event.target.closest('[data-type-value]');
+            if (typeValue) {
+                const cell = typeValue.closest('[data-type-cell]');
+                const index = Number(cell.dataset.typeCell);
+                columns[index].type = typeValue.dataset.typeValue;
+                cell.querySelector('span').textContent = columns[index].type;
+                typeValue.closest('.design-type-menu').remove();
+                selectDesignRow(index);
+                return;
+            }
+
+            const typeButton = event.target.closest('.design-type-button');
+            if (typeButton) {
+                const cell = typeButton.closest('[data-type-cell]');
+                const index = Number(cell.dataset.typeCell);
+                selectDesignRow(index);
+                openTypeDropdown(cell, index);
+                event.stopPropagation();
+                return;
+            }
+
+            const row = event.target.closest('[data-design-row]');
+            if (row) {
+                selectDesignRow(Number(row.dataset.designRow));
+                view.querySelector('.design-type-menu')?.remove();
+                return;
+            }
+
+            const closeSheet = event.target.closest('.property-close');
+            if (closeSheet) {
+                view.querySelector('[data-property-sheet]')?.classList.add('hidden');
+                return;
+            }
+
+            view.querySelector('.design-type-menu')?.remove();
+        });
     });
 }
 
@@ -1206,46 +1867,82 @@ function initFormDesignViews(db) {
 
         const subColumns = subTable.structure.columns.filter(column => form.subform.columns.includes(column.name));
 
+        const firstColumn = parentColumns[0];
         view.innerHTML = `
-            <div class="form-designer">
-                <div class="designer-tab"><i class="fas fa-window-restore"></i><span>${escapeHtml(form.title)}</span></div>
-                <div class="designer-rulers">
-                    <div class="designer-corner"></div>
-                    <div class="designer-ruler-x">${Array.from({ length: 10 }, (_, index) => `<span>${index}</span>`).join('')}</div>
-                </div>
-                <div class="designer-body">
-                    <div class="designer-nav-label">Navigation Pane</div>
-                    <div class="designer-canvas">
-                        <section class="designer-section form-header-section">
-                            <div class="designer-section-title"><i class="fas fa-caret-down"></i> Form Header</div>
-                            <div class="designer-band form-header-band">
-                                <div class="designer-form-icon"><i class="fas fa-window-restore"></i></div>
-                                <div class="designer-title-control">${escapeHtml(form.title)}</div>
-                            </div>
-                        </section>
-                        <section class="designer-section detail-section">
-                            <div class="designer-section-title"><i class="fas fa-caret-down"></i> Detail</div>
-                            <div class="designer-band detail-band">
-                                ${parentColumns.map((column, index) => `
-                                    <label class="designer-label" style="top:${34 + index * 64}px">${escapeHtml(column.label || column.name)}</label>
-                                    <div class="designer-input" style="top:${28 + index * 64}px">${escapeHtml(column.name)}</div>
-                                `).join('')}
-                                <div class="designer-subform">
-                                    <div class="designer-subform-title">${escapeHtml(form.subform.title)}</div>
-                                    <div class="designer-subform-grid">
-                                        ${subColumns.slice(0, 5).map(column => `<span>${escapeHtml(column.label || column.name)}</span>`).join('')}
+            <div class="form-design-layout">
+                <div class="form-designer">
+                    <div class="designer-tab"><i class="fas fa-window-restore"></i><span>${escapeHtml(form.title)}</span></div>
+                    <div class="designer-rulers">
+                        <div class="designer-corner"></div>
+                        <div class="designer-ruler-x">${Array.from({ length: 10 }, (_, index) => `<span>${index}</span>`).join('')}</div>
+                    </div>
+                    <div class="designer-body">
+                        <div class="designer-nav-label">Navigation Pane</div>
+                        <div class="designer-canvas">
+                            <section class="designer-section form-header-section">
+                                <div class="designer-section-title"><i class="fas fa-caret-down"></i> Form Header</div>
+                                <div class="designer-band form-header-band">
+                                    <div class="designer-form-icon"><i class="fas fa-window-restore"></i></div>
+                                    <div class="designer-title-control">${escapeHtml(form.title)}</div>
+                                </div>
+                            </section>
+                            <section class="designer-section detail-section">
+                                <div class="designer-section-title"><i class="fas fa-caret-down"></i> Detail</div>
+                                <div class="designer-band detail-band">
+                                    ${parentColumns.map((column, index) => `
+                                        <label class="designer-label" style="top:${34 + index * 64}px">${escapeHtml(column.label || column.name)}</label>
+                                        <div class="designer-input ${index === 0 ? 'selected-control' : ''}" style="top:${28 + index * 64}px">${escapeHtml(column.name)}</div>
+                                    `).join('')}
+                                    <div class="designer-subform">
+                                        <div class="designer-subform-title">${escapeHtml(form.subform.title)}</div>
+                                        <div class="designer-subform-grid">
+                                            ${subColumns.slice(0, 5).map(column => `<span>${escapeHtml(column.label || column.name)}</span>`).join('')}
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        </section>
-                        <section class="designer-section form-footer-section">
-                            <div class="designer-section-title"><i class="fas fa-caret-down"></i> Form Footer</div>
-                            <div class="designer-band form-footer-band"></div>
-                        </section>
+                            </section>
+                            <section class="designer-section form-footer-section">
+                                <div class="designer-section-title"><i class="fas fa-caret-down"></i> Form Footer</div>
+                                <div class="designer-band form-footer-band"></div>
+                            </section>
+                        </div>
                     </div>
                 </div>
+                <aside class="property-sheet form-property-sheet" data-property-sheet>
+                    <button class="property-close" title="Close Property Sheet"><i class="fas fa-times"></i></button>
+                    <h2>Property Sheet</h2>
+                    <p>Selection type: Text Box</p>
+                    <select class="form-property-select"><option>${escapeHtml(firstColumn?.name || 'Form')}</option></select>
+                    <div class="field-tabs"><button class="active">Format</button><button>Data</button><button>Event</button><button>Other</button><button>All</button></div>
+                    <div class="property-grid">
+                        ${[
+                            ['Name', firstColumn?.name || form.title],
+                            ['Label Name', 'Label0'],
+                            ['Control Source', firstColumn?.name || ''],
+                            ['Format', ''],
+                            ['Decimal Places', 'Auto'],
+                            ['Visible', 'Yes'],
+                            ['Text Format', 'Plain Text'],
+                            ['Width', '6.825"'],
+                            ['Height', '0.2493"'],
+                            ['Top', '0.25"'],
+                            ['Left', '1.1833"'],
+                            ['Back Style', 'Normal'],
+                            ['Border Style', 'Solid'],
+                            ['Font Name', 'Calibri (Detail)'],
+                            ['Font Size', '11'],
+                            ['Text Align', 'Left']
+                        ].map(([label, value]) => `<div class="prop-label">${escapeHtml(label)}</div><div class="prop-value">${escapeHtml(value)}</div>`).join('')}
+                    </div>
+                </aside>
             </div>
         `;
+
+        view.addEventListener('click', event => {
+            if (event.target.closest('.property-close')) {
+                view.querySelector('[data-property-sheet]')?.classList.add('hidden');
+            }
+        });
     });
 }
 
@@ -1613,6 +2310,28 @@ function initQueryBuilders(db) {
 }
 
 document.addEventListener('click', event => {
+    const statusButton = event.target.closest('[data-status-view]');
+    if (statusButton) {
+        activateStatusView(statusButton.dataset.statusView);
+        return;
+    }
+
+    const createMenuButton = event.target.closest('[data-create-menu]');
+    if (createMenuButton) {
+        openCreateMenu(createMenuButton, createMenuButton.dataset.createMenu);
+        return;
+    }
+
+    if (createMenu && !event.target.closest('.create-menu')) {
+        closeCreateMenu();
+    }
+
+    const propertySheetCommand = event.target.closest('[data-command="properties"]');
+    if (propertySheetCommand && (isTableDesignView(currentView) || currentView.startsWith('design-form-'))) {
+        content.querySelector('[data-property-sheet]')?.classList.toggle('hidden');
+        return;
+    }
+
     const moreFieldsButton = event.target.closest('[data-command="more-fields"]');
     if (moreFieldsButton) {
         openMoreFieldsMenu(moreFieldsButton);

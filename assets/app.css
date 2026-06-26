@@ -2,6 +2,22 @@ html, body {
     font-family: "Segoe UI", Arial, sans-serif;
 }
 
+#workspace-main {
+    min-height: 0;
+}
+
+#workspace-main > section {
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+}
+
+#content {
+    min-height: 0;
+    min-width: 0;
+    overflow: auto;
+}
+
 .quick-btn, .win-btn {
     display: grid;
     height: 24px;
@@ -84,6 +100,33 @@ html, body {
     color: #555;
 }
 
+.status-view-buttons {
+    display: flex;
+    align-items: stretch;
+    gap: 1px;
+}
+
+.status-view-btn {
+    display: grid;
+    height: 22px;
+    width: 28px;
+    place-items: center;
+    border-left: 1px solid transparent;
+    border-right: 1px solid transparent;
+    color: #555;
+}
+
+.status-view-btn:hover,
+.status-view-btn.active {
+    border-color: #b7b7b7;
+    background: #d8e9f8;
+    color: #1f5f99;
+}
+
+.status-view-btn i {
+    font-size: 14px;
+}
+
 .status-grid::before {
     inset: 1px;
     border: 1px solid currentColor;
@@ -139,7 +182,8 @@ html, body {
 }
 
 .contextual-ribbon-tabs.hidden,
-.table-context-tab.hidden {
+.table-context-tab.hidden,
+.form-context-tab.hidden {
     display: none;
 }
 
@@ -443,6 +487,343 @@ html, body {
 
 .fields-validation {
     min-width: 180px;
+}
+
+.create-ribbon {
+    display: flex;
+    height: 100%;
+    min-width: max-content;
+    overflow: hidden;
+    background: #f4f4f4;
+}
+
+.create-group {
+    position: relative;
+    display: flex;
+    height: 100%;
+    align-items: flex-start;
+    gap: 8px;
+    border-right: 1px solid #c9c9c9;
+    padding: 6px 14px 18px;
+}
+
+.create-group::after {
+    content: attr(data-label);
+    position: absolute;
+    right: 0;
+    bottom: 2px;
+    left: 0;
+    text-align: center;
+    font-size: 11px;
+    color: #333;
+}
+
+.create-command {
+    display: grid;
+    min-width: 50px;
+    max-width: 78px;
+    height: 66px;
+    grid-template-rows: 34px auto;
+    place-items: start center;
+    gap: 1px;
+    padding: 0 3px;
+    text-align: center;
+    line-height: 1.1;
+}
+
+.create-command-icon {
+    display: grid;
+    height: 34px;
+    place-items: center;
+}
+
+.create-command-icon i {
+    color: #3079b9;
+    font-size: 30px;
+}
+
+.create-mini {
+    display: grid;
+    min-height: 22px;
+    grid-template-columns: 22px max-content 10px;
+    align-items: center;
+    gap: 4px;
+    padding: 0 3px;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.create-mini i,
+.create-menu-item i {
+    color: #4f7fac;
+}
+
+.create-stack {
+    display: grid;
+    min-width: 118px;
+    gap: 2px;
+}
+
+.create-command:hover,
+.create-command.active,
+.create-mini:hover,
+.create-mini.active {
+    background: #d8e9f8;
+    outline: 1px solid #9bbdde;
+}
+
+.create-caret {
+    color: #333;
+    font-size: 9px;
+}
+
+.create-menu {
+    position: fixed;
+    z-index: 85;
+    min-width: 188px;
+    border: 1px solid #b9b9b9;
+    background: white;
+    box-shadow: 2px 4px 10px rgba(0,0,0,.18);
+}
+
+.create-menu-list {
+    padding: 8px 0;
+}
+
+.create-menu-item {
+    display: grid;
+    width: 100%;
+    min-height: 54px;
+    grid-template-columns: 46px minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+    padding: 5px 12px;
+    text-align: left;
+}
+
+.create-menu-item:hover {
+    background: #d8e9f8;
+}
+
+.create-menu-item i {
+    font-size: 28px;
+}
+
+.form-design-ribbon {
+    display: flex;
+    height: 100%;
+    min-width: max-content;
+    overflow: hidden;
+    background: #f4f4f4;
+}
+
+.form-ribbon-group {
+    position: relative;
+    display: flex;
+    height: 100%;
+    align-items: flex-start;
+    gap: 8px;
+    border-right: 1px solid #c9c9c9;
+    padding: 6px 12px 18px;
+}
+
+.form-ribbon-group::after {
+    content: attr(data-label);
+    position: absolute;
+    right: 0;
+    bottom: 2px;
+    left: 0;
+    text-align: center;
+    font-size: 11px;
+    color: #333;
+}
+
+.form-ribbon-command {
+    display: grid;
+    min-width: 52px;
+    max-width: 86px;
+    height: 66px;
+    grid-template-rows: 34px auto;
+    place-items: start center;
+    gap: 1px;
+    padding: 0 3px;
+    text-align: center;
+    line-height: 1.12;
+}
+
+.form-ribbon-icon {
+    display: grid;
+    height: 34px;
+    place-items: center;
+}
+
+.form-ribbon-icon i {
+    color: #3079b9;
+    font-size: 30px;
+}
+
+.form-ribbon-mini {
+    display: grid;
+    min-height: 22px;
+    grid-template-columns: 22px max-content 10px;
+    align-items: center;
+    gap: 4px;
+    padding: 0 3px;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.form-ribbon-mini i {
+    color: #4f7fac;
+}
+
+.form-ribbon-stack {
+    display: grid;
+    min-width: 116px;
+    gap: 2px;
+}
+
+.form-ribbon-stack.wide {
+    min-width: 320px;
+    grid-template-columns: 210px 78px;
+    align-content: start;
+}
+
+.form-ribbon-command:hover,
+.form-ribbon-mini:hover,
+.mini-icon-row button:hover {
+    background: #d8e9f8;
+    outline: 1px solid #9bbdde;
+}
+
+.form-controls-group {
+    gap: 6px;
+}
+
+.form-controls-group .form-ribbon-command {
+    min-width: 44px;
+    max-width: 62px;
+}
+
+.form-selection-box {
+    display: grid;
+    min-width: 156px;
+    grid-template-columns: 22px minmax(0, 1fr);
+    align-items: center;
+    gap: 4px;
+}
+
+.form-selection-box select,
+.form-ribbon-group select {
+    height: 28px;
+    min-width: 118px;
+    border: 1px solid #bfc6ce;
+    background: white;
+    padding: 2px 24px 2px 6px;
+}
+
+.mini-icon-row {
+    display: flex;
+    min-height: 24px;
+    align-items: center;
+    gap: 2px;
+}
+
+.mini-icon-row button {
+    min-width: 26px;
+    height: 23px;
+    color: #777;
+    font-weight: 600;
+}
+
+.table-design-ribbon {
+    display: flex;
+    height: 100%;
+    min-width: max-content;
+    overflow: hidden;
+    background: #f4f4f4;
+}
+
+.design-ribbon-group {
+    position: relative;
+    display: flex;
+    height: 100%;
+    align-items: flex-start;
+    gap: 8px;
+    border-right: 1px solid #c9c9c9;
+    padding: 6px 12px 18px;
+}
+
+.design-ribbon-group::after {
+    content: attr(data-label);
+    position: absolute;
+    right: 0;
+    bottom: 2px;
+    left: 0;
+    text-align: center;
+    font-size: 11px;
+    color: #333;
+}
+
+.design-command {
+    display: grid;
+    min-width: 54px;
+    max-width: 88px;
+    height: 66px;
+    grid-template-rows: 34px auto;
+    place-items: start center;
+    gap: 1px;
+    padding: 0 3px;
+    text-align: center;
+    line-height: 1.12;
+}
+
+.design-command-icon {
+    display: grid;
+    height: 34px;
+    place-items: center;
+}
+
+.design-command-icon i {
+    color: #3079b9;
+    font-size: 30px;
+}
+
+.design-mini {
+    display: grid;
+    min-height: 22px;
+    grid-template-columns: 22px max-content;
+    align-items: center;
+    gap: 4px;
+    padding: 0 3px;
+    white-space: nowrap;
+}
+
+.design-stack {
+    display: grid;
+    min-width: 130px;
+    gap: 2px;
+}
+
+.design-command:hover:not(:disabled),
+.design-mini:hover:not(:disabled) {
+    background: #d8e9f8;
+    outline: 1px solid #9bbdde;
+}
+
+.design-command.disabled,
+.design-mini.disabled,
+.design-command:disabled,
+.design-mini:disabled {
+    color: #aaa;
+    cursor: default;
+}
+
+.design-command.disabled i,
+.design-mini.disabled i,
+.design-command:disabled i,
+.design-mini:disabled i {
+    color: #b9b9b9;
 }
 
 .more-fields-menu {
@@ -1079,6 +1460,7 @@ html, body {
 
 .view-shell {
     min-height: 100%;
+    min-width: 100%;
 }
 
 .datasheet-view {
@@ -1280,6 +1662,59 @@ html, body {
     outline-offset: -1px;
 }
 
+.design-grid tr[data-design-row] {
+    cursor: default;
+}
+
+.design-type-cell {
+    position: relative;
+    padding-right: 24px !important;
+}
+
+.design-type-button {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    display: grid;
+    height: 19px;
+    width: 20px;
+    place-items: center;
+    border-left: 1px solid #aeb7c1;
+    background: #edf4fb;
+    color: #1f5f99;
+}
+
+.design-type-button:hover {
+    background: #d8e9f8;
+}
+
+.design-type-menu {
+    position: absolute;
+    z-index: 40;
+    top: 22px;
+    left: 0;
+    width: 220px;
+    border: 1px solid #555;
+    background: white;
+    box-shadow: 0 3px 8px rgba(0,0,0,.2);
+}
+
+.design-type-menu button {
+    display: block;
+    width: 100%;
+    padding: 3px 7px;
+    text-align: left;
+}
+
+.design-type-menu button:hover {
+    background: #d8e9f8;
+}
+
+.design-type-menu .selected {
+    background: black;
+    color: white;
+}
+
 .design-view {
     height: 100%;
     min-height: 100%;
@@ -1299,7 +1734,7 @@ html, body {
     display: grid;
     min-height: 0;
     min-width: 0;
-    grid-template-rows: minmax(180px, 1fr) 232px;
+    grid-template-rows: minmax(140px, 1fr) minmax(280px, 38%);
     border-right: 1px solid #c8c8c8;
     overflow: hidden;
 }
@@ -1314,6 +1749,8 @@ html, body {
 }
 
 .field-properties {
+    min-height: 0;
+    overflow: auto;
     border-top: 1px solid #c8c8c8;
     background: white;
 }
@@ -1441,10 +1878,16 @@ html, body {
 
 .access-form {
     margin: 0 auto;
-    width: min(980px, calc(100% - 48px));
+    width: 980px;
+    max-width: none;
     border: 1px solid #7d91a7;
     background: #edf3f8;
     box-shadow: 0 3px 10px rgba(0,0,0,.18);
+}
+
+[data-report-view] {
+    min-width: 840px;
+    padding: 24px 0;
 }
 
 .form-title {
@@ -1515,6 +1958,46 @@ html, body {
     height: 100%;
     overflow: hidden;
     background: #e8e8e8;
+}
+
+.form-design-layout {
+    display: grid;
+    height: 100%;
+    min-height: 0;
+    min-width: 1180px;
+    grid-template-columns: minmax(0, 1fr) 360px;
+    overflow: hidden;
+}
+
+.form-design-layout .form-designer {
+    min-width: 0;
+}
+
+.form-property-sheet {
+    min-width: 320px;
+    border-left: 1px solid #c8c8c8;
+}
+
+.form-property-sheet.hidden {
+    display: none;
+}
+
+.form-design-layout:has(.form-property-sheet.hidden) {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.form-property-select {
+    width: 100%;
+    height: 28px;
+    margin-bottom: 10px;
+    border: 1px solid #bfc6ce;
+    background: white;
+    padding: 2px 24px 2px 6px;
+}
+
+.selected-control {
+    outline: 2px solid #ff8a00;
+    outline-offset: 0;
 }
 
 .form-designer {

@@ -45,6 +45,11 @@ $initialView = $_GET['view'] ?? 'table-customers';
                     <button class="ribbon-tab table-context-tab px-5 hidden" data-ribbon="fields" data-table-context="datasheet">Fields</button>
                     <button class="ribbon-tab table-context-tab px-5 hidden" data-ribbon="table" data-table-context="datasheet">Table</button>
                 </nav>
+                <nav class="contextual-ribbon-tabs hidden" id="form-tools-tabs" aria-label="Form Design Tools">
+                    <button class="ribbon-tab form-context-tab px-5" data-ribbon="form-design">Design</button>
+                    <button class="ribbon-tab form-context-tab px-5" data-ribbon="form-arrange">Arrange</button>
+                    <button class="ribbon-tab form-context-tab px-5" data-ribbon="form-format">Format</button>
+                </nav>
                 <div class="mb-3 ml-3 flex min-w-[260px] items-center gap-2 text-white/95">
                     <span class="text-lg leading-none">?</span>
                     <span>Tell me what you want to do</span>
@@ -80,13 +85,13 @@ $initialView = $_GET['view'] ?? 'table-customers';
 
         <footer class="flex h-6 items-center border-t border-[#b8b8b8] bg-[#efefef] px-2 text-xs">
             <span id="view-status">Datasheet View</span>
-            <div class="ml-auto flex items-center gap-7">
+            <div class="ml-auto flex items-center gap-5">
                 <span>Num Lock</span>
-                <i class="fas fa-table status-icon" title="Datasheet"></i>
-                <i class="fas fa-pencil-ruler status-icon" title="Design"></i>
+                <div id="status-view-buttons" class="status-view-buttons"></div>
             </div>
         </footer>
     </div>
+    <?php include __DIR__ . '/templates.php'; ?>
     <script src="assets/app.js"></script>
 </body>
 </html>
