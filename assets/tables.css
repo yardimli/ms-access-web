@@ -391,10 +391,6 @@
     min-height: 0;
     min-width: 0;
     overflow: auto;
-    background:
-        linear-gradient(90deg, #eef2f7 1px, transparent 1px) 0 0 / 96px 24px,
-        linear-gradient(#eef2f7 1px, transparent 1px) 0 0 / 96px 24px,
-        white;
 }
 
 .access-grid {
@@ -407,7 +403,7 @@
 
 .access-grid th {
     position: relative;
-    height: 24px;
+    height: var(--access-row-height, 24px);
     border: 1px solid #b9c6d4;
     background: linear-gradient(#f5f7f9, #d7dde4);
     padding: 2px 22px 2px 6px;
@@ -506,8 +502,22 @@
     transform: rotate(-45deg);
 }
 
+.column-resizer {
+    position: absolute;
+    z-index: 3;
+    top: 0;
+    right: -3px;
+    bottom: 0;
+    width: 7px;
+    cursor: col-resize;
+}
+
+.column-resizer:hover {
+    background: rgba(43, 120, 189, .28);
+}
+
 .access-grid td {
-    height: 24px;
+    height: var(--access-row-height, 24px);
     border: 1px solid #d7e0ea;
     padding: 2px 6px;
     background: #fff;
@@ -521,6 +531,7 @@
 }
 
 .access-grid .row-head {
+    position: relative;
     width: 28px;
     min-width: 28px;
     border-color: #c5ced8;
@@ -528,6 +539,20 @@
     padding: 0;
     text-align: center;
     color: #333;
+}
+
+.row-height-resizer {
+    position: absolute;
+    right: 0;
+    bottom: -3px;
+    left: 0;
+    z-index: 3;
+    height: 6px;
+    cursor: row-resize;
+}
+
+.row-height-resizer:hover {
+    background: rgba(43, 120, 189, .28);
 }
 
 .access-grid .selected-head {
@@ -563,6 +588,18 @@
     cursor: pointer;
     font-style: italic;
     font-weight: 400;
+}
+
+.access-grid th[data-header-column] {
+    cursor: move;
+}
+
+.access-grid th.column-dragging {
+    opacity: .58;
+}
+
+.access-grid th.column-drop-target {
+    box-shadow: inset 3px 0 0 #2b78bd;
 }
 
 .add-column-head:hover {

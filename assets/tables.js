@@ -156,30 +156,34 @@ function renderTableDesignRibbon() {
 
 function buildTableMarkup(tableDef, rows, options = {}) {
     const columns = options.columns
-        ? tableDef.structure.columns.filter(column => options.columns.includes(column.name))
+        ? options.columns.map(name => tableDef.structure.columns.find(column => column.name === name)).filter(Boolean)
         : tableDef.structure.columns;
     const emptyRows = Math.max(options.emptyRows ?? 8, 0);
     const sortState = options.sortState || {};
     const allowAddColumn = options.allowAddColumn === true;
     const showInsertRow = options.showInsertRow === true;
+    const columnWidths = options.columnWidths || {};
+    const rowHeight = Math.max(20, Number(options.rowHeight || 24));
 
-    const minWidth = columns.reduce((sum, column) => sum + (column.width || 110), 40) + (allowAddColumn ? 120 : 0);
+    const minWidth = columns.reduce((sum, column) => sum + (columnWidths[column.name] || column.width || 110), 40) + (allowAddColumn ? 120 : 0);
 
     const tableClass = `access-grid ${options.className || ''}`.trim();
 
     return `
-        <table class="${escapeHtml(tableClass)}" style="min-width:${minWidth}px">
+        <table class="${escapeHtml(tableClass)}" style="min-width:${minWidth}px; --access-row-height:${rowHeight}px">
             <thead>
                 <tr>
                     <th class="row-head"></th>
                     ${columns.map((column, index) => {
                         const direction = sortState.column === column.name ? sortState.direction : 'none';
+                        const width = columnWidths[column.name] || column.width || 110;
                         return `
-                            <th style="width:${column.width || 110}px" class="${index === 0 ? 'selected-head' : ''}" data-header-column="${escapeHtml(column.name)}">
+                            <th style="width:${width}px" class="${index === 0 ? 'selected-head' : ''}" draggable="true" data-header-column="${escapeHtml(column.name)}">
                                 <span class="column-title">${escapeHtml(column.label || column.name)}</span>
                                 <button class="column-sort ${direction !== 'none' ? 'active' : ''}" data-sort-column="${escapeHtml(column.name)}" data-direction="${escapeHtml(direction)}" title="Sort ${escapeHtml(column.label || column.name)}">
                                     <i class="fas ${direction === 'asc' ? 'fa-sort-up' : direction === 'desc' ? 'fa-sort-down' : 'fa-sort'}" aria-hidden="true"></i>
                                 </button>
+                                <span class="column-resizer" data-column-resizer="${escapeHtml(column.name)}" title="Resize column"></span>
                             </th>
                         `;
                     }).join('')}
@@ -196,14 +200,14 @@ function buildTableMarkup(tableDef, rows, options = {}) {
             <tbody>
                 ${rows.map((row, rowIndex) => `
                     <tr class="${rowIndex === 0 ? 'active-row' : ''}" data-row-index="${rowIndex}">
-                        <td class="row-head">${rowIndex === 0 ? '*' : ''}</td>
+                        <td class="row-head">${rowIndex === 0 ? '*' : ''}<span class="row-height-resizer" data-row-height-resizer title="Resize rows"></span></td>
                         ${columns.map(column => `<td data-column="${escapeHtml(column.name)}" data-type="${escapeHtml(column.type)}">${escapeHtml(formatValue(row[column.name], column.type))}</td>`).join('')}
                         ${allowAddColumn ? '<td class="add-column-cell"></td>' : ''}
                     </tr>
                 `).join('')}
                 ${showInsertRow ? `
                     <tr class="insert-row" data-insert-row>
-                        <td class="row-head">*</td>
+                        <td class="row-head">*<span class="row-height-resizer" data-row-height-resizer title="Resize rows"></span></td>
                         ${columns.map((column, index) => `<td class="${index === 0 ? 'new-record-cell' : ''}" data-column="${escapeHtml(column.name)}" data-insert-cell="true">${index === 0 ? '(New)' : ''}</td>`).join('')}
                         ${allowAddColumn ? '<td class="add-column-cell"></td>' : ''}
                     </tr>
@@ -377,6 +381,31 @@ function resetRowsToOriginalOrder(rows) {
     rows.sort((left, right) => (left.__accessOrder ?? 0) - (right.__accessOrder ?? 0));
 }
 
+function tablePrefsKey(tableName) {
+    return `msAccessWeb.table.${tableName}.viewPrefs`;
+}
+
+function readTablePrefs(tableName) {
+    try {
+        return JSON.parse(localStorage.getItem(tablePrefsKey(tableName)) || '{}') || {};
+    } catch {
+        return {};
+    }
+}
+
+function writeTablePrefs(tableName, prefs) {
+    localStorage.setItem(tablePrefsKey(tableName), JSON.stringify(prefs));
+}
+
+function orderedTableColumns(tableDef, prefs) {
+    const baseColumns = tableDef.structure.columns;
+    const order = Array.isArray(prefs.columnOrder) ? prefs.columnOrder : [];
+    const byName = new Map(baseColumns.map(column => [column.name, column]));
+    const ordered = order.map(name => byName.get(name)).filter(Boolean);
+    const missing = baseColumns.filter(column => !order.includes(column.name));
+    return [...ordered, ...missing];
+}
+
 function enableSubformSorting(host, tableDef, rows, columns) {
     const sortState = { column: null, direction: 'none' };
 
@@ -537,6 +566,8 @@ function initTableViews(db) {
         const position = view.querySelector('[data-record-position]');
         let activeIndex = 0;
         const sortState = { column: null, direction: 'none' };
+        let prefs = readTablePrefs(tableName);
+        let displayColumns = orderedTableColumns(tableDef, prefs);
 
         rows.forEach((row, index) => {
             if (row.__accessOrder === undefined) {
@@ -549,6 +580,7 @@ function initTableViews(db) {
         });
 
         function renderTable() {
+            displayColumns = orderedTableColumns(tableDef, prefs);
             if (sortState.direction === 'none') {
                 resetRowsToOriginalOrder(rows);
             } else {
@@ -556,10 +588,18 @@ function initTableViews(db) {
             }
             host.innerHTML = buildTableMarkup(tableDef, rows, {
                 allowAddColumn: true,
+                columns: displayColumns.map(column => column.name),
+                columnWidths: prefs.columnWidths || {},
                 emptyRows: 0,
+                rowHeight: prefs.rowHeight || 24,
                 showInsertRow: true,
                 sortState
             });
+        }
+
+        function savePrefs(nextPrefs = prefs) {
+            prefs = nextPrefs;
+            writeTablePrefs(tableName, prefs);
         }
 
         function updateActiveRow() {
@@ -667,6 +707,116 @@ function initTableViews(db) {
 
             status.textContent = `Renamed ${oldName} to ${result.name}`;
             await loadView(currentView, { replaceActive: true });
+        });
+
+        host.addEventListener('dragstart', event => {
+            const header = event.target.closest('th[data-header-column]');
+            if (!header || event.target.closest('.column-resizer, button')) {
+                event.preventDefault();
+                return;
+            }
+
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/plain', header.dataset.headerColumn);
+            header.classList.add('column-dragging');
+        });
+
+        host.addEventListener('dragend', event => {
+            event.target.closest('th[data-header-column]')?.classList.remove('column-dragging');
+            host.querySelectorAll('.column-drop-target').forEach(header => header.classList.remove('column-drop-target'));
+        });
+
+        host.addEventListener('dragover', event => {
+            const header = event.target.closest('th[data-header-column]');
+            if (!header) {
+                return;
+            }
+
+            event.preventDefault();
+            host.querySelectorAll('.column-drop-target').forEach(node => node.classList.remove('column-drop-target'));
+            header.classList.add('column-drop-target');
+        });
+
+        host.addEventListener('drop', event => {
+            const targetHeader = event.target.closest('th[data-header-column]');
+            const sourceName = event.dataTransfer.getData('text/plain');
+            const targetName = targetHeader?.dataset.headerColumn;
+            if (!sourceName || !targetName || sourceName === targetName) {
+                return;
+            }
+
+            const names = displayColumns.map(column => column.name);
+            const sourceIndex = names.indexOf(sourceName);
+            const targetIndex = names.indexOf(targetName);
+            if (sourceIndex === -1 || targetIndex === -1) {
+                return;
+            }
+
+            names.splice(sourceIndex, 1);
+            names.splice(targetIndex, 0, sourceName);
+            savePrefs({ ...prefs, columnOrder: names });
+            renderTable();
+            updateActiveRow();
+        });
+
+        host.addEventListener('pointerdown', event => {
+            const columnHandle = event.target.closest('[data-column-resizer]');
+            if (columnHandle) {
+                event.preventDefault();
+                const columnName = columnHandle.dataset.columnResizer;
+                const header = columnHandle.closest('th');
+                const startX = event.clientX;
+                const startWidth = header.getBoundingClientRect().width;
+
+                const onMove = moveEvent => {
+                    const nextWidth = Math.max(48, Math.round(startWidth + moveEvent.clientX - startX));
+                    savePrefs({
+                        ...prefs,
+                        columnWidths: {
+                            ...(prefs.columnWidths || {}),
+                            [columnName]: nextWidth
+                        }
+                    });
+                    header.style.width = `${nextWidth}px`;
+                    host.querySelectorAll(`[data-column="${CSS.escape(columnName)}"]`).forEach(cell => {
+                        cell.style.width = `${nextWidth}px`;
+                    });
+                };
+
+                const onUp = () => {
+                    document.removeEventListener('pointermove', onMove);
+                    document.removeEventListener('pointerup', onUp);
+                    renderTable();
+                    updateActiveRow();
+                };
+
+                document.addEventListener('pointermove', onMove);
+                document.addEventListener('pointerup', onUp);
+                return;
+            }
+
+            const rowHandle = event.target.closest('[data-row-height-resizer]');
+            if (rowHandle) {
+                event.preventDefault();
+                const startY = event.clientY;
+                const startHeight = Number(prefs.rowHeight || 24);
+
+                const onMove = moveEvent => {
+                    const nextHeight = Math.max(20, Math.min(72, Math.round(startHeight + moveEvent.clientY - startY)));
+                    savePrefs({ ...prefs, rowHeight: nextHeight });
+                    host.querySelector('.access-grid')?.style.setProperty('--access-row-height', `${nextHeight}px`);
+                };
+
+                const onUp = () => {
+                    document.removeEventListener('pointermove', onMove);
+                    document.removeEventListener('pointerup', onUp);
+                    renderTable();
+                    updateActiveRow();
+                };
+
+                document.addEventListener('pointermove', onMove);
+                document.addEventListener('pointerup', onUp);
+            }
         });
 
         view.addEventListener('click', event => {
