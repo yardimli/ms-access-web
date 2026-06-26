@@ -11,6 +11,10 @@ $initialView = $_GET['view'] ?? 'table-customers';
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="vendor/fontawesome/css/all.min.css">
     <link rel="stylesheet" href="assets/app.css">
+    <link rel="stylesheet" href="assets/tables.css">
+    <link rel="stylesheet" href="assets/forms.css">
+    <link rel="stylesheet" href="assets/queries.css">
+    <link rel="stylesheet" href="assets/reports.css">
 </head>
 <body class="h-screen w-screen overflow-hidden bg-white text-[13px] text-neutral-900">
     <div id="access-app" class="flex h-screen w-screen flex-col bg-white" data-initial-view="<?= htmlspecialchars($initialView, ENT_QUOTES) ?>">
@@ -93,6 +97,10 @@ $initialView = $_GET['view'] ?? 'table-customers';
         </footer>
     </div>
     <?php include __DIR__ . '/templates.php'; ?>
+    <script src="assets/tables.js"></script>
+    <script src="assets/forms.js"></script>
+    <script src="assets/queries.js"></script>
+    <script src="assets/reports.js"></script>
     <script src="assets/app.js"></script>
 </body>
 </html>

@@ -1,0 +1,4 @@
+
+allow user to sort columns in table view also resize the width of the colmuns, it should be visual only (but saved in localstorage) and not actually change the order of rows in the underlying sql table. similarly allow user to change height of rows in table view, it should apply the same to all rows and also stored in localstorage.
+
+add data validation when user inputs something to a cell, for yes/no columns actually show a checkbox, for datetime add a button besides the input field when user edits that will open the calendar picker, right align numeric columns

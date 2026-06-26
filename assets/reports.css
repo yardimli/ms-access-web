@@ -1,0 +1,28 @@
+﻿[data-report-view] {
+    min-width: 840px;
+    padding: 24px 0;
+}
+
+.report-stat {
+    border: 1px solid #d4dbe3;
+    background: #f8fafc;
+    padding: 14px;
+}
+
+.report-stat span {
+    display: block;
+    color: #666;
+}
+
+.report-stat strong {
+    display: block;
+    margin-top: 6px;
+    font-size: 24px;
+}
+
+.report-th, .report-td {
+    border: 1px solid #d4dbe3;
+    padding: 8px;
+    text-align: left;
+}
+
