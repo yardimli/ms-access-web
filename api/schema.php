@@ -37,7 +37,7 @@ function mysql_type_for_access_type(string $type): string
 function fetch_column_definition(mysqli $db, string $tableName, string $columnName): ?array
 {
     $stmt = $db->prepare(
-        'SELECT column_type, is_nullable, column_default, extra
+        'SELECT column_type, is_nullable, column_default, extra, column_comment
          FROM information_schema.columns
          WHERE table_schema = DATABASE()
            AND table_name = ?
@@ -56,7 +56,7 @@ function column_exists(mysqli $db, string $tableName, string $columnName): bool
     return fetch_column_definition($db, $tableName, $columnName) !== null;
 }
 
-function column_definition_sql(array $column): string
+function column_definition_sql(array $column, ?string $comment = null): string
 {
     $sql = $column['column_type'];
     $sql .= strtoupper($column['is_nullable']) === 'NO' ? ' NOT NULL' : ' NULL';
@@ -75,7 +75,21 @@ function column_definition_sql(array $column): string
         $sql .= ' ' . $column['extra'];
     }
 
+    $columnComment = $comment ?? (string) ($column['column_comment'] ?? '');
+    if ($columnComment !== '') {
+        $sql .= " COMMENT '" . addslashes($columnComment) . "'";
+    }
+
     return $sql;
+}
+
+function update_column_metadata(mysqli $db, string $tableName, string $columnName, string $friendlyName): void
+{
+    $metadata = fetch_table_metadata($db, $tableName);
+    $metadata['columns'] ??= [];
+    $metadata['columns'][$columnName] ??= [];
+    $metadata['columns'][$columnName]['friendlyName'] = trim($friendlyName);
+    save_table_metadata($db, $tableName, $metadata);
 }
 
 try {
@@ -91,6 +105,8 @@ try {
     if ($action === 'addColumn') {
         $fieldName = validate_field_name((string) ($request['name'] ?? ''));
         $type = (string) ($request['type'] ?? 'Short Text');
+        $friendlyName = trim((string) ($request['friendlyName'] ?? ''));
+        $comment = trim((string) ($request['comment'] ?? ''));
 
         if (column_exists($db, $resolvedTable, $fieldName)) {
             throw new RuntimeException('A field with that name already exists.');
@@ -98,8 +114,10 @@ try {
 
         $db->query(
             'ALTER TABLE ' . db_identifier($resolvedTable) .
-            ' ADD COLUMN ' . db_identifier($fieldName) . ' ' . mysql_type_for_access_type($type)
+            ' ADD COLUMN ' . db_identifier($fieldName) . ' ' . mysql_type_for_access_type($type) .
+            ($comment !== '' ? " COMMENT '" . addslashes($comment) . "'" : '')
         );
+        update_column_metadata($db, $resolvedTable, $fieldName, $friendlyName);
 
         json_response([
             'ok' => true,
@@ -112,6 +130,8 @@ try {
     if ($action === 'renameColumn') {
         $oldName = validate_field_name((string) ($request['oldName'] ?? ''));
         $newName = validate_field_name((string) ($request['newName'] ?? ''));
+        $friendlyName = trim((string) ($request['friendlyName'] ?? ''));
+        $comment = trim((string) ($request['comment'] ?? ''));
 
         if (!column_exists($db, $resolvedTable, $oldName)) {
             throw new RuntimeException('Original field was not found.');
@@ -125,8 +145,17 @@ try {
         $db->query(
             'ALTER TABLE ' . db_identifier($resolvedTable) .
             ' CHANGE COLUMN ' . db_identifier($oldName) . ' ' . db_identifier($newName) . ' ' .
-            column_definition_sql($definition)
+            column_definition_sql($definition, $comment)
         );
+        $metadata = fetch_table_metadata($db, $resolvedTable);
+        $metadata['columns'] ??= [];
+        if ($oldName !== $newName && isset($metadata['columns'][$oldName])) {
+            $metadata['columns'][$newName] = $metadata['columns'][$oldName];
+            unset($metadata['columns'][$oldName]);
+        }
+        $metadata['columns'][$newName] ??= [];
+        $metadata['columns'][$newName]['friendlyName'] = $friendlyName;
+        save_table_metadata($db, $resolvedTable, $metadata);
 
         json_response([
             'ok' => true,

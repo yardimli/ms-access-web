@@ -269,9 +269,15 @@ function formatValue(value, type) {
     if (value === null || value === undefined) {
         return '';
     }
+    if (value === '') {
+        return '';
+    }
 
     if (type === 'Currency') {
-        return Number(value).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+        const number = Number(String(value).replace(/[$,]/g, ''));
+        return Number.isFinite(number)
+            ? number.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
+            : String(value);
     }
 
     return String(value);
@@ -1029,6 +1035,7 @@ function renderRibbon(name) {
 
     if (name === 'fields') {
         renderFieldsRibbon();
+        window.updateFieldsRibbonState?.();
         return;
     }
 
@@ -1490,6 +1497,12 @@ document.addEventListener('click', async event => {
     const propertySheetCommand = event.target.closest('[data-command="properties"]');
     if (propertySheetCommand && (isTableDesignView(currentView) || currentView.startsWith('design-form-'))) {
         content.querySelector('[data-property-sheet]')?.classList.toggle('hidden');
+        return;
+    }
+
+    const captionCommand = event.target.closest('[data-command="caption"]');
+    if (captionCommand && isTableDatasheetView(currentView)) {
+        await window.accessActiveTableController?.openColumnDialog?.();
         return;
     }
 

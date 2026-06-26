@@ -59,7 +59,7 @@ try {
     $server->query(
         'CREATE TABLE access_object_definitions (
             id INT AUTO_INCREMENT PRIMARY KEY,
-            object_type ENUM("form", "query", "report") NOT NULL,
+            object_type ENUM("form", "query", "report", "table") NOT NULL,
             object_name VARCHAR(120) NOT NULL,
             definition_json JSON NOT NULL,
             updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

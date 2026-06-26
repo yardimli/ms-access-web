@@ -64,10 +64,10 @@ function renderFieldsRibbon() {
                 <div class="fields-stack fields-wide-stack">
                     ${ribbonMiniButton('caption', 'Name & Caption')}
                     ${ribbonMiniButton('default', 'Default Value', { disabled: true })}
-                    <div class="fields-mini fields-size-row disabled">
+                    <div class="fields-mini fields-size-row disabled" data-field-size-row>
                         <span class="fields-mini-icon">${ribbonIcon('field-size')}</span>
                         <span>Field Size</span>
-                        <span class="fields-small-input"></span>
+                        <input class="fields-small-input" data-field-size-input disabled>
                     </div>
                 </div>
                 ${ribbonBigButton('lookup', 'Modify Lookups', { disabled: true })}
@@ -77,14 +77,14 @@ function renderFieldsRibbon() {
 
             <div class="fields-group fields-formatting" data-label="Formatting">
                 <div class="fields-format-controls">
-                    <label><span>Data Type:</span><select><option>AutoNumber</option></select></label>
+                    <label><span>Data Type:</span><select data-field-data-type>${tableDataTypes.map(type => `<option>${escapeHtml(type)}</option>`).join('')}</select></label>
                     <label class="disabled"><span>Format:</span><select disabled><option>Formatting</option></select></label>
                     <div class="fields-format-icons">
                         <button type="button" disabled>${ribbonIcon('currency-symbol')}</button>
                         <button type="button" disabled>${ribbonIcon('percent')}</button>
                         <button type="button" disabled>${ribbonIcon('comma')}</button>
-                        <button type="button" disabled>${ribbonIcon('decimal-less')}</button>
-                        <button type="button" disabled>${ribbonIcon('decimal-more')}</button>
+                        <button class="decimal-button" type="button" disabled>${decimalRibbonIcon('less')}</button>
+                        <button class="decimal-button" type="button" disabled>${decimalRibbonIcon('more')}</button>
                     </div>
                 </div>
             </div>
@@ -99,7 +99,61 @@ function renderFieldsRibbon() {
             </div>
         </div>
     `;
+    updateFieldsRibbonState();
 }
+
+function decimalRibbonIcon(direction) {
+    const arrow = direction === 'less' ? 'fa-arrow-left' : 'fa-arrow-right';
+    return `<span class="decimal-ribbon-icon"><i class="fas ${arrow}" aria-hidden="true"></i><span>.0</span><span>.00</span></span>`;
+}
+
+function supportsFieldSize(column) {
+    return ['Short Text', 'Long Text', 'Number', 'Large Number', 'AutoNumber'].includes(column?.type);
+}
+
+function displayFieldSize(column) {
+    if (!column) return '';
+    if (column.fieldSize) return String(column.fieldSize);
+    if (['AutoNumber', 'Number', 'Large Number'].includes(column.type)) return 'Long Integer';
+    if (column.type === 'Short Text') return '255';
+    return '';
+}
+
+function updateFieldsRibbonState(column = window.accessActiveTableColumn) {
+    if (!ribbon?.querySelector?.('.fields-ribbon')) {
+        return;
+    }
+
+    window.accessActiveTableColumn = column || window.accessActiveTableColumn || null;
+    const activeColumn = window.accessActiveTableColumn;
+    const sizeRow = ribbon.querySelector('[data-field-size-row]');
+    const sizeInput = ribbon.querySelector('[data-field-size-input]');
+    const typeSelect = ribbon.querySelector('[data-field-data-type]');
+
+    if (typeSelect && activeColumn) {
+        typeSelect.value = tableDataTypes.includes(activeColumn.type) ? activeColumn.type : 'Short Text';
+    }
+
+    if (sizeRow && sizeInput) {
+        const editable = supportsFieldSize(activeColumn);
+        sizeRow.classList.toggle('disabled', !editable);
+        sizeInput.disabled = !editable;
+        sizeInput.value = displayFieldSize(activeColumn);
+    }
+
+    [
+        ['required', Boolean(activeColumn?.required)],
+        ['unique', Boolean(activeColumn?.unique)],
+        ['indexed', Boolean(activeColumn?.indexed)]
+    ].forEach(([command, checked]) => {
+        const button = ribbon.querySelector(`[data-command="${command}"]`);
+        button?.classList.toggle('checked', checked);
+        button?.removeAttribute('disabled');
+        button?.classList.remove('disabled');
+    });
+}
+
+window.updateFieldsRibbonState = updateFieldsRibbonState;
 
 
 function designCommand(icon, label, options = {}) {
@@ -153,6 +207,43 @@ function renderTableDesignRibbon() {
     `;
 }
 
+function isNumericColumn(type) {
+    return ['AutoNumber', 'Number', 'Large Number', 'Currency'].includes(type);
+}
+
+function isDateColumn(type) {
+    return ['Date/Time', 'Date & Time'].includes(type);
+}
+
+function isYesNoColumn(type) {
+    return type === 'Yes/No';
+}
+
+function coerceYesNo(value) {
+    return value === true || value === 1 || value === '1' || String(value).toLowerCase() === 'true' || String(value).toLowerCase() === 'yes';
+}
+
+function tableCellMarkup(column, value, options = {}) {
+    const classes = [];
+    if (isNumericColumn(column.type)) classes.push('numeric-cell');
+    if (isYesNoColumn(column.type)) classes.push('yes-no-cell');
+    if (options.placeholder) classes.push('new-record-cell');
+
+    const attrs = [
+        `class="${classes.join(' ')}"`,
+        `data-column="${escapeHtml(column.name)}"`,
+        `data-type="${escapeHtml(column.type)}"`
+    ];
+    if (options.insert) attrs.push('data-insert-cell="true"');
+
+    const displayValue = value === '(New)' ? '(New)' : formatValue(value, column.type);
+    const content = isYesNoColumn(column.type) && value !== '(New)'
+        ? `<input type="checkbox" ${coerceYesNo(value) ? 'checked' : ''} disabled aria-label="${escapeHtml(column.label || column.name)}">`
+        : escapeHtml(displayValue);
+
+    return `<td ${attrs.join(' ')}>${content}</td>`;
+}
+
 
 function buildTableMarkup(tableDef, rows, options = {}) {
     const columns = options.columns
@@ -164,6 +255,7 @@ function buildTableMarkup(tableDef, rows, options = {}) {
     const showInsertRow = options.showInsertRow === true;
     const columnWidths = options.columnWidths || {};
     const rowHeight = Math.max(20, Number(options.rowHeight || 24));
+    const insertDraft = options.insertDraft || {};
 
     const minWidth = columns.reduce((sum, column) => sum + (columnWidths[column.name] || column.width || 110), 40) + (allowAddColumn ? 120 : 0);
 
@@ -201,14 +293,14 @@ function buildTableMarkup(tableDef, rows, options = {}) {
                 ${rows.map((row, rowIndex) => `
                     <tr class="${rowIndex === 0 ? 'active-row' : ''}" data-row-index="${rowIndex}">
                         <td class="row-head">${rowIndex === 0 ? '*' : ''}<span class="row-height-resizer" data-row-height-resizer title="Resize rows"></span></td>
-                        ${columns.map(column => `<td data-column="${escapeHtml(column.name)}" data-type="${escapeHtml(column.type)}">${escapeHtml(formatValue(row[column.name], column.type))}</td>`).join('')}
+                        ${columns.map(column => tableCellMarkup(column, row[column.name])).join('')}
                         ${allowAddColumn ? '<td class="add-column-cell"></td>' : ''}
                     </tr>
                 `).join('')}
                 ${showInsertRow ? `
                     <tr class="insert-row" data-insert-row>
                         <td class="row-head">*<span class="row-height-resizer" data-row-height-resizer title="Resize rows"></span></td>
-                        ${columns.map((column, index) => `<td class="${index === 0 ? 'new-record-cell' : ''}" data-column="${escapeHtml(column.name)}" data-insert-cell="true">${index === 0 ? '(New)' : ''}</td>`).join('')}
+                        ${columns.map((column, index) => tableCellMarkup(column, insertDraft[column.name] ?? (index === 0 ? '(New)' : ''), { insert: true, placeholder: index === 0 && insertDraft[column.name] === undefined })).join('')}
                         ${allowAddColumn ? '<td class="add-column-cell"></td>' : ''}
                     </tr>
                 ` : ''}
@@ -247,7 +339,17 @@ const addColumnTypes = [
     'Calculated Field'
 ];
 
-function showColumnDialog({ title, label, value, confirmText, includeType = false, typeValue = 'Short Text', onSubmit }) {
+function showColumnDialog({
+    title,
+    label,
+    value,
+    friendlyName = '',
+    comment = '',
+    confirmText,
+    includeType = false,
+    typeValue = 'Short Text',
+    onSubmit
+}) {
     return new Promise(resolve => {
         const dialog = document.createElement('dialog');
         dialog.className = 'access-dialog';
@@ -262,6 +364,10 @@ function showColumnDialog({ title, label, value, confirmText, includeType = fals
                         <span>${escapeHtml(label)}</span>
                         <input name="fieldName" value="${escapeHtml(value)}" autocomplete="off">
                     </label>
+                    <label class="dialog-field">
+                        <span>Friendly name</span>
+                        <input name="friendlyName" value="${escapeHtml(friendlyName)}" autocomplete="off" placeholder="Optional display name">
+                    </label>
                     ${includeType ? `
                         <label class="dialog-field">
                             <span>Data type</span>
@@ -270,7 +376,11 @@ function showColumnDialog({ title, label, value, confirmText, includeType = fals
                             </select>
                         </label>
                     ` : ''}
-                    <p class="dialog-help">Use a SQL-safe field name. Letters, numbers, and underscores are allowed.</p>
+                    <label class="dialog-field dialog-field-tall">
+                        <span>Comment</span>
+                        <textarea name="fieldComment" rows="3" placeholder="Optional SQL column comment">${escapeHtml(comment)}</textarea>
+                    </label>
+                    <p class="dialog-help">The field name is the real SQL column name. Friendly name is only used as the table header when set.</p>
                     <p class="dialog-error" data-dialog-error hidden></p>
                 </div>
                 <div class="dialog-actions">
@@ -280,7 +390,9 @@ function showColumnDialog({ title, label, value, confirmText, includeType = fals
             </form>
         `;
         document.body.appendChild(dialog);
-        const input = dialog.querySelector('input');
+        const input = dialog.querySelector('input[name="fieldName"]');
+        const friendlyInput = dialog.querySelector('input[name="friendlyName"]');
+        const commentInput = dialog.querySelector('textarea[name="fieldComment"]');
         const typeSelect = dialog.querySelector('select[name="fieldType"]');
         const error = dialog.querySelector('[data-dialog-error]');
         const submitButton = dialog.querySelector('button[type="submit"]');
@@ -314,12 +426,19 @@ function showColumnDialog({ title, label, value, confirmText, includeType = fals
                 submitButton.textContent = 'Working...';
                 const result = await onSubmit?.({
                     name: nextName,
-                    type: typeSelect?.value || typeValue
+                    type: typeSelect?.value || typeValue,
+                    friendlyName: friendlyInput?.value.trim() || '',
+                    comment: commentInput?.value.trim() || ''
                 });
                 settled = true;
                 dialog.close();
                 dialog.remove();
-                resolve(result ?? { name: nextName, type: typeSelect?.value || typeValue });
+                resolve(result ?? {
+                    name: nextName,
+                    type: typeSelect?.value || typeValue,
+                    friendlyName: friendlyInput?.value.trim() || '',
+                    comment: commentInput?.value.trim() || ''
+                });
             } catch (submitError) {
                 error.textContent = submitError.message || 'Unable to update the table.';
                 error.hidden = false;
@@ -344,6 +463,51 @@ function showColumnDialog({ title, label, value, confirmText, includeType = fals
         input.focus();
         input.select();
     });
+}
+
+let openMessageDialogPromise = null;
+
+function showMessageDialog({ title, message, confirmText = 'OK' }) {
+    if (openMessageDialogPromise) {
+        return openMessageDialogPromise;
+    }
+
+    openMessageDialogPromise = new Promise(resolve => {
+        const finish = () => {
+            dialog.remove();
+            openMessageDialogPromise = null;
+            resolve();
+        };
+
+        const dialog = document.createElement('dialog');
+        dialog.className = 'access-dialog';
+        dialog.innerHTML = `
+            <form method="dialog">
+                <div class="access-dialog-title">
+                    <span>${escapeHtml(title)}</span>
+                    <button type="button" data-dialog-close aria-label="Close"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="access-dialog-body">
+                    <p class="dialog-error">${escapeHtml(message)}</p>
+                </div>
+                <div class="dialog-actions">
+                    <button class="primary" type="button" data-dialog-close>${escapeHtml(confirmText)}</button>
+                </div>
+            </form>
+        `;
+        document.body.appendChild(dialog);
+        dialog.querySelectorAll('[data-dialog-close]').forEach(button => {
+            button.addEventListener('click', () => dialog.close(), { once: true });
+        });
+        dialog.addEventListener('cancel', event => {
+            event.preventDefault();
+            dialog.close();
+        });
+        dialog.addEventListener('close', finish, { once: true });
+        dialog.showModal();
+    });
+
+    return openMessageDialogPromise;
 }
 
 function nextSortDirection(current) {
@@ -452,45 +616,98 @@ function positionActiveCellEditor() {
         return;
     }
 
-    const { input, cell } = activeCellEditor;
+    const { editor, cell } = activeCellEditor;
     if (!cell.isConnected) {
         closeActiveCellEditor(false);
         return;
     }
 
     const rect = cell.getBoundingClientRect();
-    input.style.left = `${rect.left}px`;
-    input.style.top = `${rect.top}px`;
-    input.style.width = `${rect.width}px`;
-    input.style.height = `${rect.height}px`;
+    editor.style.left = `${rect.left}px`;
+    editor.style.top = `${rect.top}px`;
+    editor.style.width = `${rect.width}px`;
+    editor.style.height = `${rect.height}px`;
+}
+
+function normalizeCellValue(value, type) {
+    const text = String(value ?? '').trim();
+    if (text === '' || text === '(New)') return '';
+
+    if (isYesNoColumn(type)) {
+        return coerceYesNo(value) ? '1' : '0';
+    }
+
+    if (isNumericColumn(type)) {
+        const cleaned = text.replace(/[$,]/g, '');
+        const number = Number(cleaned);
+        if (!Number.isFinite(number)) {
+            throw new Error(`${type} fields must contain a valid number.`);
+        }
+        return type === 'Currency' ? number.toFixed(2) : String(Math.trunc(number));
+    }
+
+    if (isDateColumn(type)) {
+        const date = new Date(text);
+        if (Number.isNaN(date.getTime())) {
+            throw new Error('Date/Time fields must contain a valid date.');
+        }
+        return text;
+    }
+
+    return text;
+}
+
+function dateInputValue(value) {
+    const text = String(value || '').trim();
+    if (!text) return '';
+    const match = text.match(/^\d{4}-\d{2}-\d{2}/);
+    if (match) return match[0];
+    const date = new Date(text);
+    if (Number.isNaN(date.getTime())) return text;
+    return date.toISOString().slice(0, 10);
+}
+
+function showValidationDialog(message) {
+    return showMessageDialog({
+        title: 'Validation Error',
+        message,
+        confirmText: 'Edit'
+    });
 }
 
 function closeActiveCellEditor(commit = true) {
     if (!activeCellEditor) {
-        return;
+        return true;
     }
 
-    const { input, cell, row, column, originalValue, insertRow, rows, onInsert } = activeCellEditor;
-    const nextValue = commit ? input.value : originalValue;
+    const { input, editor, cell, row, column, columnDef, type, originalValue, insertRow, onInsertEdit, onCancelInsert } = activeCellEditor;
+    let nextValue = commit ? (input.type === 'checkbox' ? input.checked : input.value) : originalValue;
+
+    if (commit) {
+        try {
+            nextValue = normalizeCellValue(nextValue, type);
+        } catch (error) {
+            showValidationDialog(error.message);
+            input.focus();
+            return false;
+        }
+    }
 
     if (insertRow) {
-        if (commit && nextValue.trim() !== '') {
-            const newRow = {};
-            cell.closest('table')?.querySelectorAll('th[data-header-column]').forEach(header => {
-                newRow[header.dataset.headerColumn] = '';
-            });
-            newRow[column] = nextValue;
-            rows.push(newRow);
-            onInsert?.(rows.length - 1);
+        if (commit) {
+            onInsertEdit?.(column, nextValue);
+        } else {
+            onCancelInsert?.();
         }
     } else {
         row[column] = nextValue;
-        cell.textContent = nextValue;
+        cell.outerHTML = tableCellMarkup(columnDef || { name: column, type }, nextValue);
     }
 
     cell.classList.remove('editing-cell');
-    input.remove();
+    editor.remove();
     activeCellEditor = null;
+    return true;
 }
 
 function shouldKeepCellEditorOpen(target) {
@@ -498,6 +715,8 @@ function shouldKeepCellEditorOpen(target) {
 }
 
 function enableEditableCells(container, rows, options = {}) {
+    const columnDefs = options.columns || [];
+
     container.addEventListener('dblclick', event => {
         const cell = event.target.closest('td[data-column]');
         if (!cell) {
@@ -514,29 +733,48 @@ function enableEditableCells(container, rows, options = {}) {
         closeActiveCellEditor(true);
 
         const column = cell.dataset.column;
-        const originalValue = cell.textContent.trim();
+        const columnDef = columnDefs.find(item => item.name === column) || { name: column, type: cell.dataset.type };
+        const type = cell.dataset.type;
+        const originalValue = isInsertRow
+            ? ''
+            : rowIndex >= 0 && rows[rowIndex]
+                ? rows[rowIndex][column]
+                : isYesNoColumn(type)
+                    ? (cell.querySelector('input[type="checkbox"]')?.checked ? '1' : '0')
+                    : cell.textContent.trim();
+        const editor = document.createElement('div');
         const input = document.createElement('input');
 
-        input.type = 'text';
+        editor.className = `cell-edit-control ${isDateColumn(type) ? 'date-editor' : ''}`;
+        input.type = isYesNoColumn(type) ? 'checkbox' : isDateColumn(type) ? 'date' : 'text';
         input.className = 'cell-edit-input';
-        input.value = isInsertRow ? '' : originalValue;
+        if (isYesNoColumn(type)) {
+            input.checked = isInsertRow ? false : coerceYesNo(originalValue);
+        } else {
+            const editValue = isInsertRow || originalValue === '(New)' ? '' : originalValue;
+            input.value = isDateColumn(type) ? dateInputValue(editValue) : editValue;
+        }
+        editor.appendChild(input);
 
         cell.classList.add('editing-cell');
-        document.body.appendChild(input);
+        document.body.appendChild(editor);
         activeCellEditor = {
+            editor,
             input,
             cell,
             row: isInsertRow ? null : rows[rowIndex],
-            rows,
             column,
+            columnDef,
+            type,
             originalValue: isInsertRow ? '' : originalValue,
             insertRow: isInsertRow,
-            onInsert: options.onInsert
+            onInsertEdit: options.onInsertEdit,
+            onCancelInsert: options.onCancelInsert
         };
         positionActiveCellEditor();
 
         input.focus();
-        input.select();
+        input.select?.();
 
         input.addEventListener('keydown', keyEvent => {
             if (keyEvent.key === 'Enter') {
@@ -568,6 +806,9 @@ function initTableViews(db) {
         const sortState = { column: null, direction: 'none' };
         let prefs = readTablePrefs(tableName);
         let displayColumns = orderedTableColumns(tableDef, prefs);
+        let insertDraft = {};
+        let activeColumnName = tableDef.structure.columns[0]?.name || '';
+        let insertValidationActive = false;
 
         rows.forEach((row, index) => {
             if (row.__accessOrder === undefined) {
@@ -591,6 +832,7 @@ function initTableViews(db) {
                 columns: displayColumns.map(column => column.name),
                 columnWidths: prefs.columnWidths || {},
                 emptyRows: 0,
+                insertDraft,
                 rowHeight: prefs.rowHeight || 24,
                 showInsertRow: true,
                 sortState
@@ -611,17 +853,122 @@ function initTableViews(db) {
             }
         }
 
+        function columnByName(name) {
+            return tableDef.structure.columns.find(column => column.name === name) || tableDef.structure.columns[0] || null;
+        }
+
+        function setActiveColumn(name) {
+            activeColumnName = name || activeColumnName;
+            updateFieldsRibbonState(columnByName(activeColumnName));
+        }
+
+        async function openColumnDialog(columnName = activeColumnName) {
+            const oldName = columnName;
+            const columnDef = columnByName(oldName) || {};
+            if (!oldName) {
+                return null;
+            }
+
+            const result = await showColumnDialog({
+                title: 'Rename Field',
+                label: 'Field name',
+                value: oldName,
+                friendlyName: columnDef.friendlyName || '',
+                comment: columnDef.comment || '',
+                confirmText: 'Rename',
+                onSubmit: async ({ name, friendlyName, comment }) => {
+                    status.textContent = 'Renaming field...';
+                    await postSchemaAction({
+                        action: 'renameColumn',
+                        table: tableName,
+                        oldName,
+                        newName: name,
+                        friendlyName,
+                        comment
+                    });
+                    return { name, friendlyName, comment };
+                }
+            });
+
+            if (!result) {
+                return null;
+            }
+
+            status.textContent = result.name === oldName ? `Updated ${oldName}` : `Renamed ${oldName} to ${result.name}`;
+            await loadView(currentView, { replaceActive: true });
+            return result;
+        }
+
         renderTable();
+        setActiveColumn(activeColumnName);
+        window.accessActiveTableController = {
+            tableName,
+            openColumnDialog: () => openColumnDialog(activeColumnName),
+            setActiveColumn
+        };
         enableEditableCells(host, rows, {
-            onInsert(index) {
-                activeIndex = index;
+            columns: tableDef.structure.columns,
+            onInsertEdit(column, value) {
+                if (value === '') {
+                    delete insertDraft[column];
+                } else {
+                    insertDraft[column] = value;
+                }
+                renderTable();
+                updateActiveRow();
+            },
+            onCancelInsert() {
+                insertDraft = {};
                 renderTable();
                 updateActiveRow();
             }
         });
         updateActiveRow();
 
+        async function validateAndCommitInsertDraft() {
+            if (!Object.keys(insertDraft).length || insertValidationActive) {
+                return true;
+            }
+
+            insertValidationActive = true;
+            try {
+                const newRow = {};
+                tableDef.structure.columns.forEach(column => {
+                    newRow[column.name] = normalizeCellValue(insertDraft[column.name] ?? '', column.type);
+                });
+                rows.push(newRow);
+                insertDraft = {};
+                activeIndex = rows.length - 1;
+                renderTable();
+                updateActiveRow();
+                return true;
+            } catch (error) {
+                await showMessageDialog({
+                    title: 'Insert Validation Error',
+                    message: error.message,
+                    confirmText: 'Edit Row'
+                });
+                renderTable();
+                updateActiveRow();
+                return false;
+            } finally {
+                insertValidationActive = false;
+            }
+        }
+
         host.addEventListener('click', async event => {
+            if (event.target.closest('dialog')) {
+                return;
+            }
+
+            const clickedInsertRow = event.target.closest('[data-insert-row]');
+            if (!clickedInsertRow && Object.keys(insertDraft).length) {
+                const committed = await validateAndCommitInsertDraft();
+                if (!committed) {
+                    return;
+                }
+            }
+
             const addColumnTarget = event.target.closest('[data-add-column], [data-add-column-button]');
             if (addColumnTarget) {
                 event.preventDefault();
@@ -631,15 +978,17 @@ function initTableViews(db) {
                     value: generatedFieldName(tableDef.structure.columns),
                     confirmText: 'Add',
                     includeType: true,
-                    onSubmit: async ({ name, type }) => {
+                    onSubmit: async ({ name, type, friendlyName, comment }) => {
                         status.textContent = 'Adding field...';
                         await postSchemaAction({
                             action: 'addColumn',
                             table: tableName,
                             name,
-                            type
+                            type,
+                            friendlyName,
+                            comment
                         });
-                        return { name, type };
+                        return { name, type, friendlyName, comment };
                     }
                 });
 
@@ -653,6 +1002,7 @@ function initTableViews(db) {
             const sortButton = event.target.closest('[data-sort-column]');
             if (sortButton) {
                 const column = sortButton.dataset.sortColumn;
+                setActiveColumn(column);
                 const current = sortState.column === column ? sortState.direction : 'none';
                 sortState.column = column;
                 sortState.direction = nextSortDirection(current);
@@ -670,6 +1020,14 @@ function initTableViews(db) {
                 activeIndex = Number(row.dataset.rowIndex);
                 updateActiveRow();
             }
+
+            const cell = event.target.closest('td[data-column]');
+            const header = event.target.closest('th[data-header-column]');
+            if (cell) {
+                setActiveColumn(cell.dataset.column);
+            } else if (header) {
+                setActiveColumn(header.dataset.headerColumn);
+            }
         });
 
         host.addEventListener('dblclick', async event => {
@@ -679,34 +1037,8 @@ function initTableViews(db) {
             }
 
             event.preventDefault();
-            const oldName = header.dataset.headerColumn;
-            const result = await showColumnDialog({
-                title: 'Rename Field',
-                label: 'Field name',
-                value: oldName,
-                confirmText: 'Rename',
-                onSubmit: async ({ name }) => {
-                    if (name === oldName) {
-                        return { name };
-                    }
-
-                    status.textContent = 'Renaming field...';
-                    await postSchemaAction({
-                        action: 'renameColumn',
-                        table: tableName,
-                        oldName,
-                        newName: name
-                    });
-                    return { name };
-                }
-            });
-
-            if (!result || result.name === oldName) {
-                return;
-            }
-
-            status.textContent = `Renamed ${oldName} to ${result.name}`;
-            await loadView(currentView, { replaceActive: true });
+            setActiveColumn(header.dataset.headerColumn);
+            await openColumnDialog(header.dataset.headerColumn);
         });
 
         host.addEventListener('dragstart', event => {
@@ -819,7 +1151,18 @@ function initTableViews(db) {
             }
         });
 
-        view.addEventListener('click', event => {
+        view.addEventListener('click', async event => {
+            if (event.target.closest('dialog') || openMessageDialogPromise) {
+                return;
+            }
+
+            if (!event.target.closest('[data-table-host]') && Object.keys(insertDraft).length) {
+                const committed = await validateAndCommitInsertDraft();
+                if (!committed) {
+                    return;
+                }
+            }
+
             const button = event.target.closest('[data-nav]');
             if (!button || !rows.length) {
                 return;
@@ -863,7 +1206,7 @@ function initDesignViews(db) {
             if (column.type === 'Number') rows.push(['Decimal Places', 'Auto']);
             rows.push(
                 ['Input Mask', ''],
-                ['Caption', ''],
+                ['Caption', column.friendlyName || ''],
                 ['Default Value', ''],
                 ['Validation Rule', ''],
                 ['Validation Text', ''],
@@ -873,6 +1216,7 @@ function initDesignViews(db) {
                 ['Unicode Compression', column.type === 'Short Text' ? 'Yes' : ''],
                 ['IME Mode', column.type === 'Short Text' ? 'No Control' : ''],
                 ['IME Sentence Mode', column.type === 'Short Text' ? 'None' : ''],
+                ['Description', column.comment || ''],
                 ['Text Align', 'General']
             );
             return rows;
@@ -896,7 +1240,8 @@ function initDesignViews(db) {
                 ['Primary Key', column.name === tableDef.structure.primaryKey ? 'Yes' : 'No'],
                 ['Indexed', column.name === tableDef.structure.primaryKey ? 'Yes (No Duplicates)' : 'No'],
                 ['Required', column.name === tableDef.structure.primaryKey ? 'Yes' : 'No'],
-                ['Caption', ''],
+                ['Caption', column.friendlyName || ''],
+                ['Description', column.comment || ''],
                 ['Validation Rule', ''],
                 ['Text Align', 'General']
             ].map(([label, value]) => `<div class="prop-label">${escapeHtml(label)}</div><div class="prop-value">${escapeHtml(value)}</div>`).join('');
@@ -943,7 +1288,7 @@ function initDesignViews(db) {
                                             <span>${escapeHtml(column.type)}</span>
                                             <button class="design-type-button" type="button"><i class="fas fa-caret-down"></i></button>
                                         </td>
-                                        <td>${column.name === tableDef.structure.primaryKey ? 'Primary key' : ''}</td>
+                                        <td>${escapeHtml(column.comment || (column.name === tableDef.structure.primaryKey ? 'Primary key' : ''))}</td>
                                     </tr>
                                 `).join('')}
                                 ${Array.from({ length: 8 }, () => '<tr><td class="row-head"></td><td></td><td></td><td></td></tr>').join('')}

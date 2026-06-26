@@ -135,8 +135,15 @@
     width: 72px;
     height: 22px;
     border: 1px solid #c6c6c6;
-    background: #ececec;
+    background: #fff;
     justify-self: end;
+    padding: 1px 4px;
+    font-size: 12px;
+}
+
+.fields-small-input:disabled {
+    background: #ececec;
+    color: #9b9b9b;
 }
 
 .fields-format-controls {
@@ -185,6 +192,31 @@
 .fields-format-icons i {
     color: #aaa;
     font-size: 15px;
+}
+
+.decimal-button {
+    width: 28px;
+}
+
+.decimal-ribbon-icon {
+    display: grid;
+    width: 24px;
+    grid-template-columns: 9px 1fr;
+    grid-template-rows: 9px 9px;
+    align-items: center;
+    color: #6a7888;
+    font-size: 9px;
+    line-height: 1;
+}
+
+.decimal-ribbon-icon i {
+    grid-row: 1 / span 2;
+    color: #3677b8;
+    font-size: 8px;
+}
+
+.decimal-ribbon-icon span {
+    display: block;
 }
 
 .fields-big.disabled,
@@ -526,6 +558,18 @@
     text-overflow: ellipsis;
 }
 
+.access-grid td.numeric-cell {
+    text-align: right;
+}
+
+.access-grid td.yes-no-cell {
+    text-align: center;
+}
+
+.access-grid td.yes-no-cell input {
+    pointer-events: none;
+}
+
 .access-grid tbody tr:nth-child(even) td {
     background: #f0f0f0;
 }
@@ -559,12 +603,12 @@
     background: linear-gradient(#ffe983, #ffd64d);
 }
 
-.access-grid tr.active-row td {
-    background: #a8d2eb;
+.access-grid tbody tr.active-row td {
+    background: #a8d2eb !important;
 }
 
-.access-grid tr.active-row .row-head {
-    background: #ffd85b;
+.access-grid tbody tr.active-row .row-head {
+    background: #ffd85b !important;
 }
 
 .access-grid tr.insert-row td {
@@ -687,16 +731,33 @@
     outline-offset: -2px;
 }
 
-.cell-edit-input {
+.cell-edit-control {
     position: fixed;
     z-index: 120;
+    display: flex;
+    align-items: stretch;
     border: 2px solid #e88e99;
+    background: white;
+    padding: 0;
+    outline: 0;
+    box-shadow: inset 0 0 0 1px white;
+}
+
+.cell-edit-input {
+    min-width: 0;
+    flex: 1;
+    border: 0;
     background: white;
     padding: 1px 5px;
     font: inherit;
     line-height: 18px;
     outline: 0;
-    box-shadow: inset 0 0 0 1px white;
+}
+
+.cell-edit-input[type="checkbox"] {
+    flex: 0 0 auto;
+    width: 18px;
+    margin: auto;
 }
 
 .add-column-menu {
@@ -732,7 +793,7 @@
 }
 
 .access-dialog {
-    width: min(420px, calc(100vw - 40px));
+    width: min(500px, calc(100vw - 40px));
     border: 1px solid #7e8794;
     border-radius: 2px;
     background: #f3f4f6;
@@ -794,13 +855,18 @@
     gap: 10px;
 }
 
+.dialog-field-tall {
+    align-items: start;
+}
+
 .dialog-field span {
     color: #333;
     font-weight: 600;
 }
 
 .access-dialog input,
-.access-dialog select {
+.access-dialog select,
+.access-dialog textarea {
     height: 30px;
     min-width: 0;
     border: 1px solid #9faab7;
@@ -809,8 +875,14 @@
     outline: 0;
 }
 
+.access-dialog textarea {
+    height: auto;
+    resize: vertical;
+}
+
 .access-dialog input:focus,
-.access-dialog select:focus {
+.access-dialog select:focus,
+.access-dialog textarea:focus {
     border-color: #2b78bd;
     box-shadow: 0 0 0 1px #2b78bd inset;
 }
