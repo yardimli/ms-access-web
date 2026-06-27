@@ -164,6 +164,21 @@ function fetch_table_rows(mysqli $db, string $tableName, int $limit = 500): arra
     return $rows;
 }
 
+function fetch_table_row_by_primary_key(mysqli $db, string $tableName, string $primaryKey, mixed $value): ?array
+{
+    if ($primaryKey === '' || $value === null || $value === '') {
+        return null;
+    }
+
+    $stmt = $db->prepare('SELECT * FROM ' . db_identifier($tableName) . ' WHERE ' . db_identifier($primaryKey) . ' = ? LIMIT 1');
+    $value = (string) $value;
+    $stmt->bind_param('s', $value);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+
+    return $row ?: null;
+}
+
 function fetch_table_payload(mysqli $db, string $tableName, bool $includeRows = true): array
 {
     [$columns, $primaryKey] = fetch_table_columns($db, $tableName);

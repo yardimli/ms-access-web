@@ -620,6 +620,21 @@
     font-size: 18px;
 }
 
+.access-grid tbody tr.active-row td {
+    background: #a8d2eb !important;
+}
+
+.access-grid tbody tr.active-row .row-head {
+    background: #ffd85b !important;
+}
+
+.access-grid td.selected-cell {
+    position: relative;
+    outline: 2px solid #111;
+    outline-offset: -2px;
+    box-shadow: inset 0 0 0 1px #fff;
+}
+
 .access-grid .new-record-cell {
     text-align: right;
 }

@@ -5,7 +5,7 @@ require_once __DIR__ . '/lib/db.php';
 function mysql_type_for_access(array $column): string
 {
     return match ($column['type'] ?? 'Short Text') {
-        'AutoNumber' => 'INT NOT NULL',
+        'AutoNumber' => 'INT NOT NULL AUTO_INCREMENT',
         'Number' => 'DECIMAL(12,2) NULL',
         'Currency' => 'DECIMAL(12,2) NULL',
         'Date/Time' => 'DATE NULL',

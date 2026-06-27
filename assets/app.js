@@ -314,6 +314,24 @@ async function postSchemaAction(payload) {
     return data;
 }
 
+async function postRecordAction(payload) {
+    const response = await fetch('api/records.php', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: JSON.stringify(payload)
+    });
+    const data = await response.json();
+
+    if (!response.ok || !data.ok) {
+        throw new Error(data.error || 'Record update failed.');
+    }
+
+    return data;
+}
+
 function mergeViewData(db, data = {}) {
     db.tables = { ...(db.tables || {}), ...(data.tables || {}) };
     db.forms = { ...(db.forms || {}), ...(data.forms || {}) };

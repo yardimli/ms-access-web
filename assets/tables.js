@@ -680,7 +680,7 @@ function closeActiveCellEditor(commit = true) {
         return true;
     }
 
-    const { input, editor, cell, row, column, columnDef, type, originalValue, insertRow, onInsertEdit, onCancelInsert } = activeCellEditor;
+    const { input, editor, cell, row, column, columnDef, type, originalValue, insertRow, onInsertEdit, onCancelInsert, onClose } = activeCellEditor;
     let nextValue = commit ? (input.type === 'checkbox' ? input.checked : input.value) : originalValue;
 
     if (commit) {
@@ -697,7 +697,7 @@ function closeActiveCellEditor(commit = true) {
         if (commit) {
             onInsertEdit?.(column, nextValue);
         } else {
-            onCancelInsert?.();
+            onCancelInsert?.(column, originalValue);
         }
     } else {
         row[column] = nextValue;
@@ -707,6 +707,7 @@ function closeActiveCellEditor(commit = true) {
     cell.classList.remove('editing-cell');
     editor.remove();
     activeCellEditor = null;
+    onClose?.();
     return true;
 }
 
@@ -717,26 +718,27 @@ function shouldKeepCellEditorOpen(target) {
 function enableEditableCells(container, rows, options = {}) {
     const columnDefs = options.columns || [];
 
-    container.addEventListener('dblclick', event => {
-        const cell = event.target.closest('td[data-column]');
+    function openCellEditor(cell) {
         if (!cell) {
-            return;
+            return false;
         }
 
         const row = cell.closest('tr');
         const isInsertRow = row?.hasAttribute('data-insert-row');
         const rowIndex = Number(row?.dataset.rowIndex);
         if (!isInsertRow && (!Number.isInteger(rowIndex) || !rows[rowIndex])) {
-            return;
+            return false;
         }
 
-        closeActiveCellEditor(true);
+        if (!closeActiveCellEditor(true)) {
+            return false;
+        }
 
         const column = cell.dataset.column;
         const columnDef = columnDefs.find(item => item.name === column) || { name: column, type: cell.dataset.type };
         const type = cell.dataset.type;
         const originalValue = isInsertRow
-            ? ''
+            ? (options.getInsertValue?.(column) ?? '')
             : rowIndex >= 0 && rows[rowIndex]
                 ? rows[rowIndex][column]
                 : isYesNoColumn(type)
@@ -766,10 +768,11 @@ function enableEditableCells(container, rows, options = {}) {
             column,
             columnDef,
             type,
-            originalValue: isInsertRow ? '' : originalValue,
+            originalValue,
             insertRow: isInsertRow,
             onInsertEdit: options.onInsertEdit,
-            onCancelInsert: options.onCancelInsert
+            onCancelInsert: options.onCancelInsert,
+            onClose: options.onClose
         };
         positionActiveCellEditor();
 
@@ -787,6 +790,20 @@ function enableEditableCells(container, rows, options = {}) {
                 closeActiveCellEditor(false);
             }
         });
+
+        return true;
+    }
+
+    container.addEventListener('dblclick', event => {
+        const cell = event.target.closest('td[data-column]');
+        if (cell) {
+            options.onSelectCell?.(cell);
+            openCellEditor(cell);
+        }
+    });
+
+    container.addEventListener('access-edit-cell', event => {
+        openCellEditor(event.detail?.cell);
     });
 }
 
@@ -808,6 +825,8 @@ function initTableViews(db) {
         let displayColumns = orderedTableColumns(tableDef, prefs);
         let insertDraft = {};
         let activeColumnName = tableDef.structure.columns[0]?.name || '';
+        let cursorRowIndex = rows.length ? 0 : 0;
+        let cursorColumnName = activeColumnName;
         let insertValidationActive = false;
 
         rows.forEach((row, index) => {
@@ -822,6 +841,10 @@ function initTableViews(db) {
 
         function renderTable() {
             displayColumns = orderedTableColumns(tableDef, prefs);
+            if (!displayColumns.some(column => column.name === cursorColumnName)) {
+                cursorColumnName = displayColumns[0]?.name || '';
+            }
+            cursorRowIndex = Math.max(0, Math.min(cursorRowIndex, rows.length));
             if (sortState.direction === 'none') {
                 resetRowsToOriginalOrder(rows);
             } else {
@@ -837,6 +860,7 @@ function initTableViews(db) {
                 showInsertRow: true,
                 sortState
             });
+            host.tabIndex = 0;
         }
 
         function savePrefs(nextPrefs = prefs) {
@@ -846,11 +870,52 @@ function initTableViews(db) {
 
         function updateActiveRow() {
             host.querySelectorAll('tbody tr').forEach(row => row.classList.remove('active-row'));
-            const row = host.querySelector(`tbody tr[data-row-index="${activeIndex}"]`);
+            const row = cursorRowIndex >= rows.length
+                ? host.querySelector('tbody tr[data-insert-row]')
+                : host.querySelector(`tbody tr[data-row-index="${cursorRowIndex}"]`);
             row?.classList.add('active-row');
             if (position) {
+                activeIndex = Math.max(0, Math.min(cursorRowIndex, Math.max(rows.length - 1, 0)));
                 position.value = `${rows.length ? activeIndex + 1 : 0} of ${rows.length}`;
             }
+        }
+
+        function selectedCellElement() {
+            const row = cursorRowIndex >= rows.length
+                ? host.querySelector('tbody tr[data-insert-row]')
+                : host.querySelector(`tbody tr[data-row-index="${cursorRowIndex}"]`);
+            return row?.querySelector(`td[data-column="${CSS.escape(cursorColumnName)}"]`) || null;
+        }
+
+        function updateCellCursor() {
+            host.querySelectorAll('.selected-cell').forEach(cell => cell.classList.remove('selected-cell'));
+            const cell = selectedCellElement();
+            cell?.classList.add('selected-cell');
+            updateActiveRow();
+            setActiveColumn(cursorColumnName);
+        }
+
+        function setCellCursor(rowIndex, columnName) {
+            cursorRowIndex = Math.max(0, Math.min(rowIndex, rows.length));
+            cursorColumnName = columnName || cursorColumnName || displayColumns[0]?.name || '';
+            updateCellCursor();
+            host.focus({ preventScroll: true });
+        }
+
+        function moveCellCursor(rowDelta, columnDelta) {
+            const names = displayColumns.map(column => column.name);
+            const currentColumnIndex = Math.max(0, names.indexOf(cursorColumnName));
+            const nextColumnIndex = Math.max(0, Math.min(names.length - 1, currentColumnIndex + columnDelta));
+            setCellCursor(cursorRowIndex + rowDelta, names[nextColumnIndex] || cursorColumnName);
+            selectedCellElement()?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        }
+
+        function editSelectedCell() {
+            const cell = selectedCellElement();
+            if (!cell) {
+                return;
+            }
+            host.dispatchEvent(new CustomEvent('access-edit-cell', { detail: { cell } }));
         }
 
         function columnByName(name) {
@@ -900,7 +965,7 @@ function initTableViews(db) {
         }
 
         renderTable();
-        setActiveColumn(activeColumnName);
+        updateCellCursor();
         window.accessActiveTableController = {
             tableName,
             openColumnDialog: () => openColumnDialog(activeColumnName),
@@ -908,6 +973,18 @@ function initTableViews(db) {
         };
         enableEditableCells(host, rows, {
             columns: tableDef.structure.columns,
+            getInsertValue(column) {
+                return insertDraft[column] ?? '';
+            },
+            onSelectCell(cell) {
+                const row = cell.closest('tr');
+                const rowIndex = row?.hasAttribute('data-insert-row') ? rows.length : Number(row?.dataset.rowIndex);
+                setCellCursor(rowIndex, cell.dataset.column);
+            },
+            onClose() {
+                updateCellCursor();
+                host.focus({ preventScroll: true });
+            },
             onInsertEdit(column, value) {
                 if (value === '') {
                     delete insertDraft[column];
@@ -915,15 +992,20 @@ function initTableViews(db) {
                     insertDraft[column] = value;
                 }
                 renderTable();
-                updateActiveRow();
+                updateCellCursor();
             },
-            onCancelInsert() {
-                insertDraft = {};
+            onCancelInsert(column, originalValue) {
+                if (originalValue === '') {
+                    delete insertDraft[column];
+                } else {
+                    insertDraft[column] = originalValue;
+                }
                 renderTable();
-                updateActiveRow();
+                updateCellCursor();
             }
         });
-        updateActiveRow();
+        updateCellCursor();
+        host.focus({ preventScroll: true });
 
         async function validateAndCommitInsertDraft() {
             if (!Object.keys(insertDraft).length || insertValidationActive) {
@@ -936,11 +1018,43 @@ function initTableViews(db) {
                 tableDef.structure.columns.forEach(column => {
                     newRow[column.name] = normalizeCellValue(insertDraft[column.name] ?? '', column.type);
                 });
-                rows.push(newRow);
+
+                status.textContent = 'Inserting record...';
+                const response = await postRecordAction({
+                    action: 'insert',
+                    table: tableName,
+                    row: newRow
+                });
+
+                if (response.payload?.structure) {
+                    tableDef.structure = response.payload.structure;
+                }
+
+                if (Array.isArray(response.payload?.data)) {
+                    rows.splice(0, rows.length, ...response.payload.data);
+                    rows.forEach((row, index) => {
+                        if (row.__accessOrder === undefined) {
+                            Object.defineProperty(row, '__accessOrder', {
+                                value: index,
+                                enumerable: false,
+                                configurable: true
+                            });
+                        }
+                    });
+                } else if (response.row) {
+                    rows.push(response.row);
+                }
+
                 insertDraft = {};
-                activeIndex = rows.length - 1;
+                const primaryKey = tableDef.structure.primaryKey;
+                const insertedKey = response.row?.[primaryKey];
                 renderTable();
-                updateActiveRow();
+                const insertedIndex = primaryKey && insertedKey !== undefined
+                    ? rows.findIndex(row => String(row[primaryKey]) === String(insertedKey))
+                    : rows.length - 1;
+                cursorRowIndex = insertedIndex >= 0 ? insertedIndex : rows.length - 1;
+                updateCellCursor();
+                status.textContent = 'Record inserted';
                 return true;
             } catch (error) {
                 await showMessageDialog({
@@ -949,7 +1063,7 @@ function initTableViews(db) {
                     confirmText: 'Edit Row'
                 });
                 renderTable();
-                updateActiveRow();
+                updateCellCursor();
                 return false;
             } finally {
                 insertValidationActive = false;
@@ -1009,24 +1123,27 @@ function initTableViews(db) {
                 if (sortState.direction === 'none') {
                     sortState.column = null;
                 }
-                activeIndex = 0;
+                cursorRowIndex = 0;
                 renderTable();
-                updateActiveRow();
+                updateCellCursor();
                 return;
             }
 
             const row = event.target.closest('tr[data-row-index]');
             if (row) {
-                activeIndex = Number(row.dataset.rowIndex);
-                updateActiveRow();
+                cursorRowIndex = Number(row.dataset.rowIndex);
             }
 
             const cell = event.target.closest('td[data-column]');
             const header = event.target.closest('th[data-header-column]');
             if (cell) {
-                setActiveColumn(cell.dataset.column);
+                const cellRow = cell.closest('tr');
+                const rowIndex = cellRow?.hasAttribute('data-insert-row') ? rows.length : Number(cellRow?.dataset.rowIndex);
+                setCellCursor(rowIndex, cell.dataset.column);
             } else if (header) {
                 setActiveColumn(header.dataset.headerColumn);
+            } else if (row) {
+                updateCellCursor();
             }
         });
 
@@ -1039,6 +1156,47 @@ function initTableViews(db) {
             event.preventDefault();
             setActiveColumn(header.dataset.headerColumn);
             await openColumnDialog(header.dataset.headerColumn);
+        });
+
+        host.addEventListener('keydown', event => {
+            if (event.target.closest('input, textarea, select') || openMessageDialogPromise) {
+                return;
+            }
+
+            const handledKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab', 'Enter', 'Escape'];
+            if (!handledKeys.includes(event.key)) {
+                return;
+            }
+
+            if (activeCellEditor) {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    closeActiveCellEditor(true);
+                } else if (event.key === 'Escape') {
+                    event.preventDefault();
+                    closeActiveCellEditor(false);
+                }
+                return;
+            }
+
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                editSelectedCell();
+                return;
+            }
+
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                updateCellCursor();
+                return;
+            }
+
+            event.preventDefault();
+            if (event.key === 'ArrowUp') moveCellCursor(-1, 0);
+            if (event.key === 'ArrowDown') moveCellCursor(1, 0);
+            if (event.key === 'ArrowLeft') moveCellCursor(0, -1);
+            if (event.key === 'ArrowRight') moveCellCursor(0, 1);
+            if (event.key === 'Tab') moveCellCursor(0, event.shiftKey ? -1 : 1);
         });
 
         host.addEventListener('dragstart', event => {
@@ -1088,7 +1246,7 @@ function initTableViews(db) {
             names.splice(targetIndex, 0, sourceName);
             savePrefs({ ...prefs, columnOrder: names });
             renderTable();
-            updateActiveRow();
+            updateCellCursor();
         });
 
         host.addEventListener('pointerdown', event => {
@@ -1119,7 +1277,7 @@ function initTableViews(db) {
                     document.removeEventListener('pointermove', onMove);
                     document.removeEventListener('pointerup', onUp);
                     renderTable();
-                    updateActiveRow();
+                    updateCellCursor();
                 };
 
                 document.addEventListener('pointermove', onMove);
@@ -1143,7 +1301,7 @@ function initTableViews(db) {
                     document.removeEventListener('pointermove', onMove);
                     document.removeEventListener('pointerup', onUp);
                     renderTable();
-                    updateActiveRow();
+                    updateCellCursor();
                 };
 
                 document.addEventListener('pointermove', onMove);
@@ -1169,11 +1327,11 @@ function initTableViews(db) {
             }
 
             const action = button.dataset.nav;
-            if (action === 'first') activeIndex = 0;
-            if (action === 'previous') activeIndex = Math.max(0, activeIndex - 1);
-            if (action === 'next') activeIndex = Math.min(rows.length - 1, activeIndex + 1);
-            if (action === 'last') activeIndex = rows.length - 1;
-            updateActiveRow();
+            if (action === 'first') cursorRowIndex = 0;
+            if (action === 'previous') cursorRowIndex = Math.max(0, cursorRowIndex - 1);
+            if (action === 'next') cursorRowIndex = Math.min(rows.length - 1, cursorRowIndex + 1);
+            if (action === 'last') cursorRowIndex = rows.length - 1;
+            updateCellCursor();
         });
     });
 }
@@ -1357,5 +1515,3 @@ function initDesignViews(db) {
         });
     });
 }
-
-
