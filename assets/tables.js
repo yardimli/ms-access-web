@@ -292,14 +292,14 @@ function buildTableMarkup(tableDef, rows, options = {}) {
             <tbody>
                 ${rows.map((row, rowIndex) => `
                     <tr class="${rowIndex === 0 ? 'active-row' : ''}" data-row-index="${rowIndex}">
-                        <td class="row-head">${rowIndex === 0 ? '*' : ''}<span class="row-height-resizer" data-row-height-resizer title="Resize rows"></span></td>
+                        <td class="row-head" data-row-menu-target="${rowIndex}">${rowIndex === 0 ? '*' : ''}<span class="row-height-resizer" data-row-height-resizer title="Resize rows"></span></td>
                         ${columns.map(column => tableCellMarkup(column, row[column.name])).join('')}
                         ${allowAddColumn ? '<td class="add-column-cell"></td>' : ''}
                     </tr>
                 `).join('')}
                 ${showInsertRow ? `
                     <tr class="insert-row" data-insert-row>
-                        <td class="row-head">*<span class="row-height-resizer" data-row-height-resizer title="Resize rows"></span></td>
+                        <td class="row-head" data-row-menu-target="insert">*<span class="row-height-resizer" data-row-height-resizer title="Resize rows"></span></td>
                         ${columns.map((column, index) => tableCellMarkup(column, insertDraft[column.name] ?? (index === 0 ? '(New)' : ''), { insert: true, placeholder: index === 0 && insertDraft[column.name] === undefined })).join('')}
                         ${allowAddColumn ? '<td class="add-column-cell"></td>' : ''}
                     </tr>
@@ -610,6 +610,22 @@ function enableSubformSorting(host, tableDef, rows, columns) {
 }
 
 let activeCellEditor = null;
+let rowMenu = null;
+
+function rowClipboardKey(tableName) {
+    return `msAccessWeb.table.${tableName}.rowClipboard`;
+}
+
+function closeRowMenu() {
+    rowMenu?.remove();
+    rowMenu = null;
+}
+
+document.addEventListener('click', event => {
+    if (rowMenu && !event.target.closest('.row-popup-menu') && !event.target.closest('[data-row-menu-target]')) {
+        closeRowMenu();
+    }
+});
 
 function positionActiveCellEditor() {
     if (!activeCellEditor) {
@@ -940,6 +956,25 @@ function initTableViews(db) {
             return Object.fromEntries(tableDef.structure.columns.map(column => [column.name, row?.[column.name] ?? '']));
         }
 
+        function assignRowOrderMetadata() {
+            rows.forEach((nextRow, index) => {
+                if (nextRow.__accessOrder === undefined) {
+                    Object.defineProperty(nextRow, '__accessOrder', {
+                        value: index,
+                        enumerable: false,
+                        configurable: true
+                    });
+                }
+            });
+        }
+
+        function pasteableRowData(data = {}) {
+            const primaryKey = primaryKeyName();
+            return Object.fromEntries(tableDef.structure.columns
+                .filter(column => !(column.name === primaryKey && column.type === 'AutoNumber'))
+                .map(column => [column.name, data[column.name] ?? '']));
+        }
+
         function markDirtyRow(rowIndex) {
             const row = rows[rowIndex];
             if (!row) {
@@ -973,6 +1008,136 @@ function initTableViews(db) {
             renderTable();
             updateCellCursor();
             status.textContent = 'Row changes reverted';
+        }
+
+        async function deleteRow(rowIndex) {
+            const row = rows[rowIndex];
+            const primaryKey = primaryKeyName();
+            if (!row || !primaryKey) {
+                return;
+            }
+
+            try {
+                status.textContent = 'Deleting record...';
+                const response = await postRecordAction({
+                    action: 'delete',
+                    table: tableName,
+                    primaryKeyValue: row[primaryKey]
+                });
+
+                if (response.payload?.structure) {
+                    tableDef.structure = response.payload.structure;
+                }
+
+                if (Array.isArray(response.payload?.data)) {
+                    rows.splice(0, rows.length, ...response.payload.data);
+                    assignRowOrderMetadata();
+                } else {
+                    rows.splice(rowIndex, 1);
+                }
+
+                dirtyRows.clear();
+                cursorRowIndex = Math.max(0, Math.min(rowIndex, rows.length - 1));
+                renderTable();
+                updateCellCursor();
+                status.textContent = 'Record deleted';
+            } catch (error) {
+                await showMessageDialog({
+                    title: 'Delete Row Error',
+                    message: error.message,
+                    confirmText: 'OK'
+                });
+            }
+        }
+
+        function copiedRowData() {
+            try {
+                const payload = JSON.parse(localStorage.getItem(rowClipboardKey(tableName)) || 'null');
+                return payload?.table === tableName && payload?.row ? payload.row : null;
+            } catch {
+                return null;
+            }
+        }
+
+        function copyRow(rowIndex) {
+            const row = rows[rowIndex];
+            if (!row) {
+                return;
+            }
+
+            localStorage.setItem(rowClipboardKey(tableName), JSON.stringify({
+                table: tableName,
+                copiedAt: new Date().toISOString(),
+                row: snapshotRow(row)
+            }));
+            status.textContent = 'Row copied';
+        }
+
+        function pasteRow(rowTarget) {
+            const data = copiedRowData();
+            if (!data) {
+                status.textContent = 'No copied row available';
+                return;
+            }
+
+            const values = pasteableRowData(data);
+            if (rowTarget === 'insert') {
+                insertDraft = { ...insertDraft, ...values };
+                cursorRowIndex = rows.length;
+            } else {
+                const rowIndex = Number(rowTarget);
+                if (!rows[rowIndex]) {
+                    return;
+                }
+                markDirtyRow(rowIndex);
+                Object.assign(rows[rowIndex], values);
+                cursorRowIndex = rowIndex;
+            }
+
+            cursorColumnName = Object.keys(values)[0] || cursorColumnName;
+            renderTable();
+            updateCellCursor();
+            status.textContent = 'Row pasted';
+        }
+
+        function openRowMenu(target, anchor) {
+            closeRowMenu();
+            const hasCopiedRow = Boolean(copiedRowData());
+            const isInsert = target === 'insert';
+            rowMenu = document.createElement('div');
+            rowMenu.className = 'row-popup-menu';
+            rowMenu.innerHTML = `
+                <button type="button" data-row-action="copy" ${isInsert ? 'disabled' : ''}><i class="fas fa-copy"></i><span>Copy Row</span></button>
+                <button type="button" data-row-action="paste" ${hasCopiedRow ? '' : 'disabled'}><i class="fas fa-paste"></i><span>Paste Row</span></button>
+                <button type="button" data-row-action="delete" ${isInsert ? 'disabled' : ''}><i class="fas fa-trash-alt"></i><span>Delete Row</span></button>
+            `;
+            document.body.appendChild(rowMenu);
+            const rect = anchor.getBoundingClientRect();
+            rowMenu.style.left = `${rect.right + 2}px`;
+            rowMenu.style.top = `${rect.top}px`;
+            rowMenu.dataset.rowTarget = String(target);
+            rowMenu.addEventListener('click', async event => {
+                const actionButton = event.target.closest('[data-row-action]');
+                if (!actionButton || actionButton.disabled) {
+                    return;
+                }
+
+                const rowTarget = rowMenu.dataset.rowTarget;
+                const action = actionButton.dataset.rowAction;
+                closeRowMenu();
+
+                if (action === 'copy') {
+                    copyRow(Number(rowTarget));
+                }
+
+                if (action === 'paste') {
+                    pasteRow(rowTarget);
+                }
+
+                if (action === 'delete') {
+                    await deleteRow(Number(rowTarget));
+                }
+            });
         }
 
         async function commitDirtyRow(rowIndex) {
@@ -1259,26 +1424,46 @@ function initTableViews(db) {
                 return;
             }
 
+            if (!event.target.closest('.row-popup-menu')) {
+                closeRowMenu();
+            }
+
             const addColumnTarget = event.target.closest('[data-add-column], [data-add-column-button]');
             const sortButton = event.target.closest('[data-sort-column]');
             const cell = event.target.closest('td[data-column]');
+            const rowHead = event.target.closest('[data-row-menu-target]');
             const header = event.target.closest('th[data-header-column]');
             const row = event.target.closest('tr[data-row-index]');
             const clickedInsertRow = event.target.closest('[data-insert-row]');
             const targetRowIndex = cell
                 ? (cell.closest('tr')?.hasAttribute('data-insert-row') ? rows.length : Number(cell.closest('tr')?.dataset.rowIndex))
+                : rowHead
+                    ? (rowHead.dataset.rowMenuTarget === 'insert' ? rows.length : Number(rowHead.dataset.rowMenuTarget))
                 : row
                     ? Number(row.dataset.rowIndex)
                     : null;
             const targetColumnName = cell?.dataset.column || header?.dataset.headerColumn || null;
 
-            if ((cell || row || header || sortButton || addColumnTarget) && !event.target.closest('.cell-edit-control')) {
+            if ((cell || row || rowHead || header || sortButton || addColumnTarget) && !event.target.closest('.cell-edit-control')) {
                 const leaveTarget = targetRowIndex === null ? cursorRowIndex : targetRowIndex;
                 const leaveColumn = targetColumnName || cursorColumnName;
                 if (!await commitBeforeLeavingSelection(leaveTarget, leaveColumn)) {
                     event.preventDefault();
                     return;
                 }
+            }
+
+            if (rowHead) {
+                event.preventDefault();
+                const target = rowHead.dataset.rowMenuTarget;
+                if (target === 'insert') {
+                    cursorRowIndex = rows.length;
+                } else {
+                    cursorRowIndex = Number(target);
+                }
+                updateCellCursor();
+                openRowMenu(target, rowHead);
+                return;
             }
 
             if (!clickedInsertRow && Object.keys(insertDraft).length) {

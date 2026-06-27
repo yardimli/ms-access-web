@@ -153,6 +153,26 @@ try {
         exit;
     }
 
+    if ($action === 'delete') {
+        if ($primaryKey === '') {
+            throw new RuntimeException('This table does not have a primary key for deletes.');
+        }
+
+        $primaryKeyValue = $request['primaryKeyValue'] ?? null;
+        if ($primaryKeyValue === null || $primaryKeyValue === '') {
+            throw new RuntimeException('Primary key value was not supplied.');
+        }
+
+        $db->query(
+            'DELETE FROM ' . db_identifier($resolvedTable) .
+            ' WHERE ' . db_identifier($primaryKey) . ' = ' . sql_literal($db, $primaryKeyValue) .
+            ' LIMIT 1'
+        );
+
+        refresh_table_response($db, $resolvedTable, null);
+        exit;
+    }
+
     if ($action !== 'insert') {
         throw new RuntimeException('Unsupported record action.');
     }

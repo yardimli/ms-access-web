@@ -688,6 +688,42 @@
     padding: 1px 4px;
 }
 
+.row-popup-menu {
+    position: fixed;
+    z-index: 90;
+    min-width: 150px;
+    border: 1px solid #9faab7;
+    background: #fff;
+    box-shadow: 0 8px 22px rgba(0,0,0,.22);
+    padding: 2px;
+}
+
+.row-popup-menu button {
+    display: grid;
+    width: 100%;
+    min-height: 26px;
+    grid-template-columns: 22px 1fr;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 8px;
+    color: #1f2933;
+    text-align: left;
+    font-size: 12px;
+}
+
+.row-popup-menu button:hover:not(:disabled) {
+    background: #d8e9f8;
+}
+
+.row-popup-menu button:disabled {
+    color: #a7a7a7;
+}
+
+.row-popup-menu i {
+    color: #356ea6;
+    text-align: center;
+}
+
 .record-bar {
     flex: 0 0 25px;
     display: flex;
