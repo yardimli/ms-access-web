@@ -15,6 +15,10 @@ function normalize_record_value(mixed $value, array $column): mixed
     $text = trim((string) ($value ?? ''));
 
     if ($text === '' || $text === '(New)') {
+        if (!empty($column['required']) && $type !== 'AutoNumber') {
+            throw new RuntimeException(($column['label'] ?? $column['name']) . ' is required.');
+        }
+
         return null;
     }
 
@@ -88,6 +92,16 @@ function ensure_autonumber_primary_key(mysqli $db, string $tableName, string $pr
     );
 }
 
+function refresh_table_response(mysqli $db, string $tableName, ?array $row = null): void
+{
+    json_response([
+        'ok' => true,
+        'table' => $tableName,
+        'row' => $row,
+        'payload' => fetch_table_payload($db, $tableName, true),
+    ]);
+}
+
 try {
     $db = db_connect();
     $request = record_request();
@@ -98,13 +112,50 @@ try {
         throw new RuntimeException('Table was not found.');
     }
 
-    if ($action !== 'insert') {
-        throw new RuntimeException('Unsupported record action.');
-    }
-
     [$columns, $primaryKey] = fetch_table_columns($db, $resolvedTable);
     ensure_autonumber_primary_key($db, $resolvedTable, $primaryKey, $columns);
     $row = is_array($request['row'] ?? null) ? $request['row'] : [];
+
+    if ($action === 'update') {
+        if ($primaryKey === '') {
+            throw new RuntimeException('This table does not have a primary key for updates.');
+        }
+
+        $primaryKeyValue = $request['primaryKeyValue'] ?? null;
+        if ($primaryKeyValue === null || $primaryKeyValue === '') {
+            throw new RuntimeException('Original primary key value was not supplied.');
+        }
+
+        $assignments = [];
+        foreach ($columns as $column) {
+            $name = $column['name'];
+            if ($name === $primaryKey && $column['type'] === 'AutoNumber') {
+                continue;
+            }
+
+            $value = normalize_record_value($row[$name] ?? null, $column);
+            $assignments[] = db_identifier($name) . ' = ' . sql_literal($db, $value);
+        }
+
+        if (!$assignments) {
+            throw new RuntimeException('There are no editable fields in this row.');
+        }
+
+        $db->query(
+            'UPDATE ' . db_identifier($resolvedTable) .
+            ' SET ' . implode(', ', $assignments) .
+            ' WHERE ' . db_identifier($primaryKey) . ' = ' . sql_literal($db, $primaryKeyValue) .
+            ' LIMIT 1'
+        );
+
+        $updatedRow = fetch_table_row_by_primary_key($db, $resolvedTable, $primaryKey, $primaryKeyValue);
+        refresh_table_response($db, $resolvedTable, $updatedRow);
+        exit;
+    }
+
+    if ($action !== 'insert') {
+        throw new RuntimeException('Unsupported record action.');
+    }
     $columnSql = [];
     $valueSql = [];
 
@@ -134,12 +185,7 @@ try {
         ? fetch_table_row_by_primary_key($db, $resolvedTable, $primaryKey, $insertId)
         : null;
 
-    json_response([
-        'ok' => true,
-        'table' => $resolvedTable,
-        'row' => $insertedRow,
-        'payload' => fetch_table_payload($db, $resolvedTable, true),
-    ]);
+    refresh_table_response($db, $resolvedTable, $insertedRow);
 } catch (Throwable $exception) {
     json_response(['ok' => false, 'error' => $exception->getMessage()], 400);
 }
