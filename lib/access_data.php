@@ -27,6 +27,26 @@ function access_type_from_mysql(string $dataType, string $columnType, string $co
     };
 }
 
+function canonical_mysql_type(string $dataType, string $columnType): string
+{
+    $dataType = strtolower($dataType);
+    $columnType = strtoupper($columnType);
+
+    return match ($dataType) {
+        'tinyint' => str_contains($columnType, 'TINYINT(1)') ? 'TINYINT(1)' : 'INT',
+        'int', 'integer', 'smallint', 'mediumint' => 'INT',
+        'bigint' => 'BIGINT',
+        'decimal', 'numeric' => 'DECIMAL(12,2)',
+        'varchar', 'char' => 'VARCHAR(255)',
+        'text', 'mediumtext', 'longtext' => 'TEXT',
+        'date' => 'DATE',
+        'time' => 'TIME',
+        'timestamp' => 'TIMESTAMP',
+        'datetime' => 'DATETIME',
+        default => $columnType,
+    };
+}
+
 function label_from_column(string $name): string
 {
     $label = preg_replace('/(?<!^)([A-Z])/', ' $1', $name);
@@ -137,7 +157,9 @@ function fetch_table_columns(mysqli $db, string $tableName): array
             'friendlyName' => $friendlyName,
             'comment' => $row['column_comment'] ?? '',
             'type' => $accessType,
+            'mysqlType' => canonical_mysql_type($row['data_type'], $row['column_type']),
             'fieldSize' => $fieldSize ? (int) $fieldSize : null,
+            'primaryKey' => $row['column_key'] === 'PRI',
             'required' => strtoupper((string) $row['is_nullable']) === 'NO',
             'unique' => in_array($row['column_key'], ['PRI', 'UNI'], true),
             'indexed' => $row['column_key'] !== '',

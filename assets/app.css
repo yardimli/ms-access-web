@@ -669,6 +669,57 @@ select,
     color: #ed7d31;
 }
 
+.validation-menu {
+    position: fixed;
+    z-index: 95;
+    width: 490px;
+    border: 1px solid #b8bec8;
+    background: #fff;
+    box-shadow: 1px 4px 10px rgba(0,0,0,.2);
+    padding: 4px 0;
+}
+
+.validation-menu-item {
+    display: grid;
+    width: 100%;
+    min-height: 74px;
+    grid-template-columns: 46px minmax(0, 1fr);
+    align-items: start;
+    gap: 6px;
+    padding: 9px 12px;
+    text-align: left;
+}
+
+.validation-menu-item:hover {
+    background: #d8e9f8;
+}
+
+.validation-menu-icon {
+    display: grid;
+    height: 40px;
+    place-items: center;
+    color: #607080;
+}
+
+.validation-menu-icon i {
+    color: #607080;
+    font-size: 32px;
+}
+
+.validation-menu-item strong {
+    display: block;
+    margin-bottom: 5px;
+    color: #3f4d5d;
+    font-weight: 700;
+}
+
+.validation-menu-item em {
+    display: block;
+    color: #4f5e70;
+    font-style: normal;
+    line-height: 1.35;
+}
+
 .create-ribbon {
     display: flex;
     height: 100%;

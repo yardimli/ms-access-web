@@ -91,6 +91,7 @@ let currentView = app.dataset.initialView || 'table-customers';
 let openTabs = [];
 let currentRibbon = 'home';
 let moreFieldsMenu = null;
+let validationMenu = null;
 let createMenu = null;
 let statusModeOverride = null;
 
@@ -687,6 +688,12 @@ function closeMoreFieldsMenu() {
     document.querySelector('[data-command="more-fields"]')?.classList.remove('active');
 }
 
+function closeValidationMenu() {
+    validationMenu?.remove();
+    validationMenu = null;
+    document.querySelector('[data-command="validation"]')?.classList.remove('active');
+}
+
 function closeCreateMenu() {
     createMenu?.remove();
     createMenu = null;
@@ -714,6 +721,46 @@ function buildMoreFieldsMenu() {
     `;
 }
 
+function buildValidationMenu() {
+    return `
+        <button class="validation-menu-item" type="button" data-validation-menu-item="rule">
+            <span class="validation-menu-icon">${ribbonIcon('validation')}</span>
+            <span>
+                <strong>Field Validation Rule</strong>
+                <em>Create an expression that restricts the values that can be entered in the field.</em>
+            </span>
+        </button>
+        <button class="validation-menu-item" type="button" data-validation-menu-item="message">
+            <span class="validation-menu-icon">${ribbonIcon('test-validation')}</span>
+            <span>
+                <strong>Field Validation Message</strong>
+                <em>Set the error message for the Field Validation Rule.</em>
+            </span>
+        </button>
+    `;
+}
+
+function openValidationMenu(button) {
+    if (validationMenu) {
+        closeValidationMenu();
+        return;
+    }
+
+    closeMoreFieldsMenu();
+    closeCreateMenu();
+    const box = button.getBoundingClientRect();
+    validationMenu = document.createElement('div');
+    validationMenu.className = 'validation-menu';
+    validationMenu.innerHTML = buildValidationMenu();
+    document.body.appendChild(validationMenu);
+
+    const menuWidth = validationMenu.offsetWidth;
+    const left = Math.min(box.left, window.innerWidth - menuWidth - 8);
+    validationMenu.style.left = `${Math.max(4, left)}px`;
+    validationMenu.style.top = `${box.bottom + 2}px`;
+    button.classList.add('active');
+}
+
 function openMoreFieldsMenu(button) {
     if (moreFieldsMenu && moreFieldsMenu.dataset.owner === 'more-fields') {
         closeMoreFieldsMenu();
@@ -721,6 +768,7 @@ function openMoreFieldsMenu(button) {
     }
 
     closeMoreFieldsMenu();
+    closeValidationMenu();
     const box = button.getBoundingClientRect();
     moreFieldsMenu = document.createElement('div');
     moreFieldsMenu.className = 'more-fields-menu';
@@ -1040,6 +1088,7 @@ function renderCreateRibbon() {
 
 function renderRibbon(name) {
     closeMoreFieldsMenu();
+    closeValidationMenu();
     closeCreateMenu();
     if (name === 'home') {
         renderHomeRibbon();
@@ -1524,6 +1573,18 @@ document.addEventListener('click', async event => {
         return;
     }
 
+    const validationToggle = event.target.closest('[data-command="required"], [data-command="unique"], [data-command="indexed"]');
+    if (validationToggle && isTableDatasheetView(currentView)) {
+        await window.accessActiveTableController?.toggleColumnValidation?.(validationToggle.dataset.command);
+        return;
+    }
+
+    const validationButton = event.target.closest('[data-command="validation"]');
+    if (validationButton && isTableDatasheetView(currentView)) {
+        openValidationMenu(validationButton);
+        return;
+    }
+
     const moreFieldsButton = event.target.closest('[data-command="more-fields"]');
     if (moreFieldsButton) {
         openMoreFieldsMenu(moreFieldsButton);
@@ -1538,6 +1599,20 @@ document.addEventListener('click', async event => {
 
     if (moreFieldsMenu && !event.target.closest('.more-fields-menu')) {
         closeMoreFieldsMenu();
+    }
+
+    const validationMenuItem = event.target.closest('[data-validation-menu-item]');
+    if (validationMenuItem) {
+        const label = validationMenuItem.dataset.validationMenuItem === 'rule'
+            ? 'Field Validation Rule'
+            : 'Field Validation Message';
+        closeValidationMenu();
+        status.textContent = `${label} selected`;
+        return;
+    }
+
+    if (validationMenu && !event.target.closest('.validation-menu')) {
+        closeValidationMenu();
     }
 
     const docClose = event.target.closest('.doc-close');
@@ -1600,6 +1675,13 @@ document.addEventListener('click', async event => {
         }
 
         loadView(viewButton.dataset.view);
+    }
+});
+
+document.addEventListener('change', async event => {
+    const typeSelect = event.target.closest('[data-field-data-type]');
+    if (typeSelect && isTableDatasheetView(currentView)) {
+        await window.accessActiveTableController?.changeColumnType?.(typeSelect.value);
     }
 });
 

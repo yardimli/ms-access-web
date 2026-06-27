@@ -14,6 +14,19 @@
     'Lookup Wizard...'
 ];
 
+const mysqlDataTypes = [
+    'TINYINT(1)',
+    'INT',
+    'BIGINT',
+    'DECIMAL(12,2)',
+    'VARCHAR(255)',
+    'TEXT',
+    'DATE',
+    'TIME',
+    'DATETIME',
+    'TIMESTAMP'
+];
+
 function ribbonMiniButton(icon, label, options = {}) {
     const classes = ['fields-mini'];
     if (options.disabled) classes.push('disabled');
@@ -37,6 +50,19 @@ function ribbonBigButton(icon, label, options = {}) {
             <span class="fields-big-icon">${ribbonIcon(icon)}</span>
             <span>${escapeHtml(label)}</span>
             ${options.caret ? '<i class="fas fa-caret-down fields-caret"></i>' : ''}
+        </button>
+    `;
+}
+
+function ribbonCheckboxButton(command, label, options = {}) {
+    const classes = ['fields-mini', 'fields-checkbox-mini'];
+    if (options.disabled) classes.push('disabled');
+    if (options.checked) classes.push('checked');
+
+    return `
+        <button class="${classes.join(' ')}" type="button" data-command="${escapeHtml(command)}" ${options.disabled ? 'disabled' : ''} aria-pressed="${options.checked ? 'true' : 'false'}">
+            <input type="checkbox" tabindex="-1" data-validation-checkbox="${escapeHtml(command)}" ${options.checked ? 'checked' : ''} ${options.disabled ? 'disabled' : ''} aria-hidden="true">
+            <span>${escapeHtml(label)}</span>
         </button>
     `;
 }
@@ -77,7 +103,7 @@ function renderFieldsRibbon() {
 
             <div class="fields-group fields-formatting" data-label="Formatting">
                 <div class="fields-format-controls">
-                    <label><span>Data Type:</span><select data-field-data-type>${tableDataTypes.map(type => `<option>${escapeHtml(type)}</option>`).join('')}</select></label>
+                    <label><span>Data Type:</span><select data-field-data-type>${mysqlDataTypes.map(type => `<option>${escapeHtml(type)}</option>`).join('')}</select></label>
                     <label class="disabled"><span>Format:</span><select disabled><option>Formatting</option></select></label>
                     <div class="fields-format-icons">
                         <button type="button" disabled>${ribbonIcon('currency-symbol')}</button>
@@ -91,9 +117,9 @@ function renderFieldsRibbon() {
 
             <div class="fields-group fields-validation" data-label="Field Validation">
                 <div class="fields-stack fields-check-stack">
-                    ${ribbonMiniButton('required', 'Required', { disabled: true })}
-                    ${ribbonMiniButton('unique', 'Unique', { checked: true })}
-                    ${ribbonMiniButton('indexed', 'Indexed', { disabled: true })}
+                    ${ribbonCheckboxButton('required', 'Required', { disabled: true })}
+                    ${ribbonCheckboxButton('unique', 'Unique', { disabled: true })}
+                    ${ribbonCheckboxButton('indexed', 'Indexed', { disabled: true })}
                 </div>
                 ${ribbonBigButton('validation', 'Validation', { caret: true })}
             </div>
@@ -131,7 +157,9 @@ function updateFieldsRibbonState(column = window.accessActiveTableColumn) {
     const typeSelect = ribbon.querySelector('[data-field-data-type]');
 
     if (typeSelect && activeColumn) {
-        typeSelect.value = tableDataTypes.includes(activeColumn.type) ? activeColumn.type : 'Short Text';
+        const mysqlType = String(activeColumn.mysqlType || '').toUpperCase();
+        typeSelect.value = mysqlDataTypes.includes(mysqlType) ? mysqlType : 'VARCHAR(255)';
+        typeSelect.disabled = Boolean(activeColumn.primaryKey);
     }
 
     if (sizeRow && sizeInput) {
@@ -147,9 +175,20 @@ function updateFieldsRibbonState(column = window.accessActiveTableColumn) {
         ['indexed', Boolean(activeColumn?.indexed)]
     ].forEach(([command, checked]) => {
         const button = ribbon.querySelector(`[data-command="${command}"]`);
+        const checkbox = button?.querySelector('input[type="checkbox"]');
+        const readonly = Boolean(activeColumn?.primaryKey);
         button?.classList.toggle('checked', checked);
-        button?.removeAttribute('disabled');
-        button?.classList.remove('disabled');
+        button?.classList.toggle('disabled', readonly);
+        if (checkbox) {
+            checkbox.checked = checked;
+            checkbox.disabled = readonly;
+        }
+        if (readonly) {
+            button?.setAttribute('disabled', 'disabled');
+        } else {
+            button?.removeAttribute('disabled');
+        }
+        button?.setAttribute('aria-pressed', String(checked));
     });
 }
 
@@ -1307,12 +1346,127 @@ function initTableViews(db) {
             return result;
         }
 
+        async function toggleColumnValidation(property) {
+            const column = columnByName(activeColumnName);
+            if (!column) {
+                return;
+            }
+
+            if (column.primaryKey) {
+                await showMessageDialog({
+                    title: 'Field Validation',
+                    message: 'Primary key fields are read only for Required, Unique, and Indexed settings.',
+                    confirmText: 'OK'
+                });
+                updateFieldsRibbonState(column);
+                return;
+            }
+
+            if (!await commitBeforeLeavingSelection(cursorRowIndex, cursorColumnName)) {
+                updateFieldsRibbonState(column);
+                return;
+            }
+
+            const enabled = !Boolean(column[property]);
+
+            try {
+                status.textContent = 'Updating field validation...';
+                const response = await postSchemaAction({
+                    action: 'setColumnValidation',
+                    table: tableName,
+                    column: column.name,
+                    property,
+                    enabled
+                });
+
+                if (response.payload?.structure) {
+                    tableDef.structure = response.payload.structure;
+                }
+
+                if (Array.isArray(response.payload?.data)) {
+                    rows.splice(0, rows.length, ...response.payload.data);
+                    assignRowOrderMetadata();
+                }
+
+                renderTable();
+                updateCellCursor();
+                status.textContent = `${column.name} ${property} ${enabled ? 'enabled' : 'disabled'}`;
+            } catch (error) {
+                await showMessageDialog({
+                    title: 'Field Validation Error',
+                    message: error.message,
+                    confirmText: 'OK'
+                });
+                updateFieldsRibbonState(columnByName(activeColumnName));
+            }
+        }
+
+        async function changeColumnType(mysqlType) {
+            const column = columnByName(activeColumnName);
+            const nextType = String(mysqlType || '').toUpperCase();
+            if (!column || !mysqlDataTypes.includes(nextType)) {
+                updateFieldsRibbonState(column);
+                return;
+            }
+
+            if (column.primaryKey) {
+                await showMessageDialog({
+                    title: 'Data Type',
+                    message: 'Primary key fields are read only for data type changes.',
+                    confirmText: 'OK'
+                });
+                updateFieldsRibbonState(column);
+                return;
+            }
+
+            if (String(column.mysqlType || '').toUpperCase() === nextType) {
+                return;
+            }
+
+            if (!await commitBeforeLeavingSelection(cursorRowIndex, cursorColumnName)) {
+                updateFieldsRibbonState(column);
+                return;
+            }
+
+            try {
+                status.textContent = 'Updating data type...';
+                const response = await postSchemaAction({
+                    action: 'setColumnType',
+                    table: tableName,
+                    column: column.name,
+                    type: nextType
+                });
+
+                if (response.payload?.structure) {
+                    tableDef.structure = response.payload.structure;
+                }
+
+                if (Array.isArray(response.payload?.data)) {
+                    rows.splice(0, rows.length, ...response.payload.data);
+                    assignRowOrderMetadata();
+                }
+
+                renderTable();
+                updateCellCursor();
+                status.textContent = `${column.name} data type changed to ${nextType}`;
+            } catch (error) {
+                await showMessageDialog({
+                    title: 'Data Type Change Error',
+                    message: error.message,
+                    confirmText: 'OK'
+                });
+                updateFieldsRibbonState(columnByName(activeColumnName));
+            }
+        }
+
         renderTable();
         updateCellCursor();
         window.accessActiveTableController = {
             tableName,
             openColumnDialog: () => openColumnDialog(activeColumnName),
-            setActiveColumn
+            setActiveColumn,
+            toggleColumnValidation,
+            changeColumnType
         };
         enableEditableCells(host, rows, {
             columns: tableDef.structure.columns,

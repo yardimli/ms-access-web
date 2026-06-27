@@ -62,7 +62,7 @@ $initialView = $_GET['view'] ?? 'table-customers';
                 <div class="ml-auto mb-3 mr-5 text-lg">:)</div>
             </div>
 
-            <section id="ribbon" class="h-[92px] border-b border-[#c8c8c8] bg-[#f4f4f4]"></section>
+            <section id="ribbon" class="h-[105px] border-b border-[#c8c8c8] bg-[#f4f4f4]"></section>
         </header>
 
         <main id="workspace-main" class="grid min-h-0 flex-1 grid-cols-[238px_minmax(0,1fr)] bg-white">
