@@ -155,6 +155,8 @@ function fetch_table_columns(mysqli $db, string $tableName): array
             'name' => $row['column_name'],
             'label' => $friendlyName !== '' ? $friendlyName : $row['column_name'],
             'friendlyName' => $friendlyName,
+            'validationRule' => (string) ($columnMetadata[$row['column_name']]['validationRule'] ?? ''),
+            'validationJavascript' => (string) ($columnMetadata[$row['column_name']]['validationJavascript'] ?? ''),
             'comment' => $row['column_comment'] ?? '',
             'type' => $accessType,
             'mysqlType' => canonical_mysql_type($row['data_type'], $row['column_type']),

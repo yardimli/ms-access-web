@@ -1,0 +1,228 @@
+.expression-builder-dialog {
+    width: min(560px, calc(100vw - 24px));
+    max-width: none;
+    padding: 0;
+    border: 1px solid #8ea3b8;
+    background: #f0f0f0;
+    box-shadow: 0 18px 45px rgba(0, 0, 0, 0.28);
+    font-family: "Segoe UI", Tahoma, sans-serif;
+    font-size: 14px;
+    color: #000;
+}
+
+.expression-builder-dialog::backdrop {
+    background: rgba(0, 0, 0, 0.15);
+}
+
+.expression-builder-window {
+    margin: 0;
+}
+
+.expression-builder-title {
+    display: flex;
+    height: 36px;
+    align-items: center;
+    justify-content: space-between;
+    background: #eaf1f7;
+    padding-left: 8px;
+    font-size: 16px;
+}
+
+.expression-builder-title button {
+    display: grid;
+    height: 36px;
+    width: 36px;
+    place-items: center;
+    border: 0;
+    background: transparent;
+}
+
+.expression-builder-title button:hover {
+    background: #e8b9b9;
+}
+
+.expression-builder-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 68px;
+    gap: 8px 10px;
+    padding: 7px;
+}
+
+.expression-builder-main p {
+    margin: 0 0 4px;
+    line-height: 1.2;
+}
+
+.expression-builder-main a,
+.expression-builder-description a {
+    color: #0563c1;
+    text-decoration: underline;
+}
+
+.expression-builder-main textarea {
+    width: 100%;
+    height: 113px;
+    resize: none;
+    border: 1px solid #a8b0b9;
+    background: #fff;
+    padding: 4px;
+    outline: none;
+    font-family: "Segoe UI", Tahoma, sans-serif;
+}
+
+.expression-builder-main textarea:focus {
+    border-color: #0078d7;
+}
+
+.expression-builder-preview {
+    display: grid;
+    gap: 2px;
+    height: 46px;
+    overflow: auto;
+    border: 1px solid #c4cbd2;
+    border-top: 0;
+    background: #fafafa;
+    padding: 4px;
+    font-size: 12px;
+    line-height: 1.25;
+}
+
+.expression-builder-preview code {
+    white-space: pre-wrap;
+    color: #194f85;
+}
+
+.expression-builder-preview.is-error {
+    background: #fff6f6;
+    color: #8b1a1a;
+}
+
+.expression-builder-preview.is-error code {
+    color: #8b1a1a;
+}
+
+.expression-javascript-editor {
+    border: 1px solid #a8b0b9;
+    border-top: 0;
+    background: #fff;
+    padding: 4px;
+}
+
+.expression-javascript-editor label {
+    display: grid;
+    gap: 3px;
+    font-size: 12px;
+}
+
+.expression-javascript-editor textarea {
+    height: 92px;
+    resize: vertical;
+    border: 1px solid #a8b0b9;
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 12px;
+}
+
+.expression-builder-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding-top: 50px;
+}
+
+.expression-builder-actions button {
+    min-height: 23px;
+    border: 1px solid #b7b7b7;
+    border-radius: 4px;
+    background: #fbfbfb;
+    padding: 1px 10px;
+    text-align: center;
+}
+
+.expression-builder-actions button:hover,
+.expression-builder-actions button.primary {
+    border-color: #0078d7;
+}
+
+.expression-builder-error {
+    grid-column: 1 / -1;
+    margin: 0;
+    border: 1px solid #d89999;
+    background: #fff4f4;
+    padding: 5px 7px;
+    color: #8b1a1a;
+}
+
+.expression-browser {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: 1.2fr 1fr 1fr;
+    gap: 6px;
+    min-height: 183px;
+}
+
+.expression-browser[hidden] {
+    display: none;
+}
+
+.expression-browser h3 {
+    margin: 0 0 2px;
+    font-size: 14px;
+    font-weight: 400;
+}
+
+.expression-list {
+    height: 183px;
+    overflow: auto;
+    border: 1px solid #88939e;
+    background: #fff;
+    padding: 2px;
+}
+
+.expression-choice {
+    display: flex;
+    width: 100%;
+    min-height: 18px;
+    align-items: center;
+    gap: 5px;
+    border: 0;
+    background: transparent;
+    padding: 0 3px;
+    text-align: left;
+    line-height: 18px;
+}
+
+.expression-choice:hover {
+    outline: 1px dotted #444;
+    outline-offset: -1px;
+}
+
+.expression-choice.active {
+    background: #0078d7;
+    color: #fff;
+}
+
+.expression-choice i {
+    width: 14px;
+    color: #3b78b2;
+    text-align: center;
+}
+
+.expression-choice.active i {
+    color: #fff;
+}
+
+.expression-tree .expression-choice[data-expression-element="builtins"] {
+    margin-left: 18px;
+}
+
+.expression-tree .expression-choice[data-expression-element="constants"],
+.expression-tree .expression-choice[data-expression-element="operators"] {
+    margin-left: 6px;
+}
+
+.expression-builder-description {
+    grid-column: 1 / -1;
+    height: 60px;
+    overflow: auto;
+    line-height: 1.3;
+}

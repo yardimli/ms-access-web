@@ -1401,6 +1401,43 @@ function initTableViews(db) {
             }
         }
 
+        async function setValidationRule(rule, javascript = '') {
+            const column = columnByName(activeColumnName);
+            if (!column) {
+                return;
+            }
+
+            try {
+                status.textContent = 'Saving validation rule...';
+                const response = await postSchemaAction({
+                    action: 'setValidationRule',
+                    table: tableName,
+                    column: column.name,
+                    rule,
+                    javascript
+                });
+
+                if (response.payload?.structure) {
+                    tableDef.structure = response.payload.structure;
+                }
+
+                if (Array.isArray(response.payload?.data)) {
+                    rows.splice(0, rows.length, ...response.payload.data);
+                    assignRowOrderMetadata();
+                }
+
+                renderTable();
+                updateCellCursor();
+                status.textContent = `Validation rule saved for ${column.name}`;
+            } catch (error) {
+                await showMessageDialog({
+                    title: 'Field Validation Rule Error',
+                    message: error.message,
+                    confirmText: 'OK'
+                });
+            }
+        }
+
         async function changeColumnType(mysqlType) {
             const column = columnByName(activeColumnName);
             const nextType = String(mysqlType || '').toUpperCase();
@@ -1466,7 +1503,23 @@ function initTableViews(db) {
             openColumnDialog: () => openColumnDialog(activeColumnName),
             setActiveColumn,
             toggleColumnValidation,
-            changeColumnType
+            changeColumnType,
+            setValidationRule,
+            getExpressionContext: () => {
+                const column = columnByName(activeColumnName) || tableDef.structure.columns[0] || {};
+                return {
+                    tableName,
+                    fieldName: column.name || activeColumnName || '',
+                    expression: column.validationRule || (column.name ? `[${column.name}]` : ''),
+                    javascript: column.validationJavascript || '',
+                    columns: tableDef.structure.columns.map(field => ({
+                        name: field.name,
+                        label: field.label || field.name,
+                        type: field.type,
+                        mysqlType: field.mysqlType
+                    }))
+                };
+            }
         };
         enableEditableCells(host, rows, {
             columns: tableDef.structure.columns,

@@ -347,6 +347,34 @@ try {
         exit;
     }
 
+    if ($action === 'setValidationRule') {
+        $columnName = validate_field_name((string) ($request['column'] ?? ''));
+        $rule = trim((string) ($request['rule'] ?? ''));
+        $javascript = trim((string) ($request['javascript'] ?? ''));
+
+        if (!column_exists($db, $resolvedTable, $columnName)) {
+            throw new RuntimeException('Field was not found.');
+        }
+
+        $metadata = fetch_table_metadata($db, $resolvedTable);
+        $metadata['columns'] ??= [];
+        $metadata['columns'][$columnName] ??= [];
+        if ($rule === '') {
+            unset($metadata['columns'][$columnName]['validationRule'], $metadata['columns'][$columnName]['validationJavascript']);
+        } else {
+            $metadata['columns'][$columnName]['validationRule'] = $rule;
+            $metadata['columns'][$columnName]['validationJavascript'] = $javascript;
+        }
+        save_table_metadata($db, $resolvedTable, $metadata);
+
+        json_response([
+            'ok' => true,
+            'table' => $resolvedTable,
+            'payload' => fetch_table_payload($db, $resolvedTable, true),
+        ]);
+        exit;
+    }
+
     if ($action === 'setColumnType') {
         $columnName = validate_field_name((string) ($request['column'] ?? ''));
         $newType = validate_mysql_column_type((string) ($request['type'] ?? ''));

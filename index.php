@@ -15,6 +15,7 @@ $initialView = $_GET['view'] ?? 'table-customers';
     <link rel="stylesheet" href="assets/forms.css">
     <link rel="stylesheet" href="assets/queries.css">
     <link rel="stylesheet" href="assets/reports.css">
+    <link rel="stylesheet" href="assets/expression-builder.css">
 </head>
 <body class="h-screen w-screen overflow-hidden bg-white text-[13px] text-neutral-900">
     <div id="access-app" class="flex h-screen w-screen flex-col bg-white" data-initial-view="<?= htmlspecialchars($initialView, ENT_QUOTES) ?>">
@@ -97,6 +98,9 @@ $initialView = $_GET['view'] ?? 'table-customers';
         </footer>
     </div>
     <?php include __DIR__ . '/templates.php'; ?>
+    <?php include __DIR__ . '/templates/expression-builder.php'; ?>
+    <script src="assets/expression-functions.js"></script>
+    <script src="assets/expression-builder.js"></script>
     <script src="assets/tables.js"></script>
     <script src="assets/forms.js"></script>
     <script src="assets/queries.js"></script>

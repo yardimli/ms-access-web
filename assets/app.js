@@ -1603,11 +1603,22 @@ document.addEventListener('click', async event => {
 
     const validationMenuItem = event.target.closest('[data-validation-menu-item]');
     if (validationMenuItem) {
-        const label = validationMenuItem.dataset.validationMenuItem === 'rule'
-            ? 'Field Validation Rule'
-            : 'Field Validation Message';
+        const item = validationMenuItem.dataset.validationMenuItem;
         closeValidationMenu();
-        status.textContent = `${label} selected`;
+        if (item === 'rule') {
+            try {
+                const context = window.accessActiveTableController?.getExpressionContext?.() || {};
+                const result = await window.ExpressionBuilder?.open?.(context);
+                if (result !== null && result !== undefined) {
+                    await window.accessActiveTableController?.setValidationRule?.(result.expression, result.javascript);
+                }
+            } catch (error) {
+                status.textContent = error.message || 'Expression Builder could not open';
+            }
+            return;
+        }
+
+        status.textContent = 'Field Validation Message selected';
         return;
     }
 
