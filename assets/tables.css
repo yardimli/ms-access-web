@@ -368,6 +368,8 @@
 .more-fields-menu {
     position: fixed;
     z-index: 80;
+    display: flex;
+    flex-direction: column;
     width: 308px;
     border: 1px solid #8b8b8b;
     background: white;
@@ -376,7 +378,8 @@
 }
 
 .more-fields-scroll {
-    max-height: inherit;
+    flex: 1;
+    min-height: 0;
     overflow-y: auto;
     padding-right: 18px;
 }
@@ -425,6 +428,28 @@
 .more-fields-arrow {
     color: #555;
     font-size: 11px;
+}
+
+.more-fields-footer {
+    position: relative;
+    border-top: 1px solid #dadada;
+    background: #fff;
+}
+
+.calculated-field-submenu {
+    position: absolute;
+    bottom: -1px;
+    left: 100%;
+    display: none;
+    width: 146px;
+    border: 1px solid #8b8b8b;
+    background: #fff;
+    box-shadow: 2px 4px 10px rgba(0,0,0,.18);
+}
+
+.more-fields-footer:hover .calculated-field-submenu,
+.more-fields-footer.open .calculated-field-submenu {
+    display: block;
 }
 
 .datasheet-view {

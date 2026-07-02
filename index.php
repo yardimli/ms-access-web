@@ -101,10 +101,19 @@ $initialView = $_GET['view'] ?? 'table-customers';
     <?php include __DIR__ . '/templates/expression-builder.php'; ?>
     <script src="assets/expression-functions.js"></script>
     <script src="assets/expression-builder.js"></script>
-    <script src="assets/tables.js"></script>
+    <script src="assets/tables_ribbon.js"></script>
+    <script src="assets/tables_grid.js"></script>
+    <script src="assets/tables_editing.js"></script>
+    <script src="assets/tables_datasheet.js"></script>
+    <script src="assets/tables_design.js"></script>
     <script src="assets/forms.js"></script>
     <script src="assets/queries.js"></script>
     <script src="assets/reports.js"></script>
-    <script src="assets/app.js"></script>
+    <script src="assets/app_config.js"></script>
+    <script src="assets/app_data.js"></script>
+    <script src="assets/app_object_pane.js"></script>
+    <script src="assets/app_ribbon.js"></script>
+    <script src="assets/app_views.js"></script>
+    <script src="assets/app_events.js"></script>
 </body>
 </html>
