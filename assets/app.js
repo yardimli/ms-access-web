@@ -135,8 +135,7 @@ const moreFieldsGroups = [
         ['quick-start', 'Address'],
         ['quick-start', 'Category'],
         ['quick-start', 'Name'],
-        ['calculated', 'Calculated Field'],
-        ['save-as', 'Save Selection as New Data Type']
+        ['calculated', 'Calculated Field']
     ]]
 ];
 
