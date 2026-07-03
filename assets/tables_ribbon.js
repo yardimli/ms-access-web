@@ -14,18 +14,30 @@ const tableDataTypes = [
     'Lookup Wizard...'
 ];
 
-const mysqlDataTypes = [
-    'TINYINT(1)',
-    'INT',
-    'BIGINT',
-    'DECIMAL(12,2)',
-    'VARCHAR(255)',
-    'TEXT',
-    'DATE',
-    'TIME',
-    'DATETIME',
-    'TIMESTAMP'
-];
+const fieldFormatOptions = {
+    Number: ['General Number', 'Currency', 'Euro', 'Fixed', 'Standard', 'Percent', 'Scientific'],
+    'Large Number': ['General Number', 'Currency', 'Euro', 'Fixed', 'Standard', 'Percent', 'Scientific'],
+    Currency: ['General Number', 'Currency', 'Euro', 'Fixed', 'Standard', 'Percent', 'Scientific'],
+    'Date/Time': ['General Date', 'Long Date', 'Medium Date', 'Short Date', 'Long Time', 'Medium Time', 'Short Time'],
+    'Yes/No': ['True/False', 'Yes/No', 'On/Off']
+};
+
+const defaultFieldFormats = {
+    Number: 'General Number',
+    'Large Number': 'General Number',
+    Currency: 'Currency',
+    'Date/Time': 'General Date',
+    'Yes/No': 'Yes/No'
+};
+
+function accessTypeForColumn(column) {
+    return column?.accessType || column?.type || 'Short Text';
+}
+
+function fieldFormatForColumn(column) {
+    const type = accessTypeForColumn(column);
+    return column?.accessFormat || defaultFieldFormats[type] || 'Formatting';
+}
 
 function ribbonMiniButton(icon, label, options = {}) {
     const classes = ['fields-mini'];
@@ -103,14 +115,14 @@ function renderFieldsRibbon() {
 
             <div class="fields-group fields-formatting" data-label="Formatting">
                 <div class="fields-format-controls">
-                    <label><span>Data Type:</span><select data-field-data-type>${mysqlDataTypes.map(type => `<option>${escapeHtml(type)}</option>`).join('')}</select></label>
-                    <label class="disabled"><span>Format:</span><select disabled><option>Formatting</option></select></label>
+                    <label><span>Data Type:</span><select data-field-data-type>${tableDataTypes.filter(type => !['Calculated', 'Lookup Wizard...'].includes(type)).map(type => `<option>${escapeHtml(type)}</option>`).join('')}</select></label>
+                    <label data-field-format-row><span>Format:</span><select data-field-format></select></label>
                     <div class="fields-format-icons">
-                        <button type="button" disabled>${ribbonIcon('currency-symbol')}</button>
-                        <button type="button" disabled>${ribbonIcon('percent')}</button>
-                        <button type="button" disabled>${ribbonIcon('comma')}</button>
-                        <button class="decimal-button" type="button" disabled>${decimalRibbonIcon('less')}</button>
-                        <button class="decimal-button" type="button" disabled>${decimalRibbonIcon('more')}</button>
+                        <button type="button" data-format-command="currency">${ribbonIcon('currency-symbol')}</button>
+                        <button type="button" data-format-command="percent">${ribbonIcon('percent')}</button>
+                        <button type="button" data-format-command="standard">${ribbonIcon('comma')}</button>
+                        <button class="decimal-button" type="button" data-format-command="decimal-less">${decimalRibbonIcon('less')}</button>
+                        <button class="decimal-button" type="button" data-format-command="decimal-more">${decimalRibbonIcon('more')}</button>
                     </div>
                 </div>
             </div>
@@ -155,11 +167,36 @@ function updateFieldsRibbonState(column = window.accessActiveTableColumn) {
     const sizeRow = ribbon.querySelector('[data-field-size-row]');
     const sizeInput = ribbon.querySelector('[data-field-size-input]');
     const typeSelect = ribbon.querySelector('[data-field-data-type]');
+    const formatRow = ribbon.querySelector('[data-field-format-row]');
+    const formatSelect = ribbon.querySelector('[data-field-format]');
+    const formatButtons = ribbon.querySelectorAll('[data-format-command]');
 
     if (typeSelect && activeColumn) {
-        const mysqlType = String(activeColumn.mysqlType || '').toUpperCase();
-        typeSelect.value = mysqlDataTypes.includes(mysqlType) ? mysqlType : 'VARCHAR(255)';
-        typeSelect.disabled = Boolean(activeColumn.primaryKey);
+        const accessType = accessTypeForColumn(activeColumn);
+        typeSelect.value = tableDataTypes.includes(accessType) ? accessType : 'Short Text';
+        typeSelect.disabled = Boolean(activeColumn.primaryKey || accessType === 'Attachment');
+    }
+
+    if (formatRow && formatSelect) {
+        const accessType = accessTypeForColumn(activeColumn);
+        const options = fieldFormatOptions[accessType] || [];
+        const enabled = options.length > 0;
+        formatRow.classList.toggle('disabled', !enabled);
+        formatSelect.disabled = !enabled;
+        formatSelect.innerHTML = enabled
+            ? options.map(option => `<option>${escapeHtml(option)}</option>`).join('')
+            : '<option>Formatting</option>';
+        formatSelect.value = enabled && options.includes(fieldFormatForColumn(activeColumn))
+            ? fieldFormatForColumn(activeColumn)
+            : (enabled ? options[0] : 'Formatting');
+        formatButtons.forEach(button => {
+            const command = button.dataset.formatCommand;
+            const isDecimal = command === 'decimal-less' || command === 'decimal-more';
+            const buttonEnabled = ['Number', 'Large Number', 'Currency'].includes(accessType)
+                && (!isDecimal || accessType !== 'Yes/No');
+            button.disabled = !buttonEnabled;
+            button.classList.toggle('disabled', !buttonEnabled);
+        });
     }
 
     if (sizeRow && sizeInput) {

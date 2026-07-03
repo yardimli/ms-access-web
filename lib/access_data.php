@@ -27,6 +27,17 @@ function access_type_from_mysql(string $dataType, string $columnType, string $co
     };
 }
 
+function default_access_format(string $accessType): string
+{
+    return match ($accessType) {
+        'Currency' => 'Currency',
+        'Number', 'Large Number' => 'General Number',
+        'Date/Time' => 'General Date',
+        'Yes/No' => 'Yes/No',
+        default => '',
+    };
+}
+
 function canonical_mysql_type(string $dataType, string $columnType): string
 {
     $dataType = strtolower($dataType);
@@ -148,18 +159,25 @@ function fetch_table_columns(mysqli $db, string $tableName): array
     $primaryKey = null;
 
     foreach ($stmt->get_result() as $row) {
-        $accessType = access_type_from_mysql($row['data_type'], $row['column_type'], $row['column_key']);
+        $inferredAccessType = access_type_from_mysql($row['data_type'], $row['column_type'], $row['column_key']);
+        $accessType = (string) ($columnMetadata[$row['column_name']]['accessType'] ?? $inferredAccessType);
         $friendlyName = trim((string) ($columnMetadata[$row['column_name']]['friendlyName'] ?? ''));
         $fieldSize = $row['character_maximum_length'] ?: $row['numeric_precision'];
+        $mysqlType = canonical_mysql_type($row['data_type'], $row['column_type']);
         $columns[] = [
             'name' => $row['column_name'],
             'label' => $friendlyName !== '' ? $friendlyName : $row['column_name'],
             'friendlyName' => $friendlyName,
+            'accessType' => $accessType,
+            'accessFormat' => (string) ($columnMetadata[$row['column_name']]['accessFormat'] ?? default_access_format($accessType)),
+            'decimalPlaces' => (int) ($columnMetadata[$row['column_name']]['decimalPlaces'] ?? 2),
             'validationRule' => (string) ($columnMetadata[$row['column_name']]['validationRule'] ?? ''),
             'validationJavascript' => (string) ($columnMetadata[$row['column_name']]['validationJavascript'] ?? ''),
             'comment' => $row['column_comment'] ?? '',
             'type' => $accessType,
-            'mysqlType' => canonical_mysql_type($row['data_type'], $row['column_type']),
+            'inferredAccessType' => $inferredAccessType,
+            'mysqlType' => (string) ($columnMetadata[$row['column_name']]['mysqlType'] ?? $mysqlType),
+            'actualMysqlType' => $mysqlType,
             'fieldSize' => $fieldSize ? (int) $fieldSize : null,
             'primaryKey' => $row['column_key'] === 'PRI',
             'required' => strtoupper((string) $row['is_nullable']) === 'NO',

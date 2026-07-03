@@ -14,6 +14,46 @@ function coerceYesNo(value) {
     return value === true || value === 1 || value === '1' || String(value).toLowerCase() === 'true' || String(value).toLowerCase() === 'yes';
 }
 
+function formatColumnValue(column, value) {
+    if (value === null || value === undefined || value === '') return '';
+    const type = column.accessType || column.type;
+    const format = column.accessFormat || defaultFieldFormats[type] || '';
+    const decimalPlaces = Number.isFinite(Number(column.decimalPlaces)) ? Number(column.decimalPlaces) : 2;
+
+    if (['Number', 'Large Number', 'Currency'].includes(type)) {
+        const number = Number(String(value).replace(/[$,% ,]/g, ''));
+        if (!Number.isFinite(number)) return value;
+        if (format === 'Currency') return number.toLocaleString(undefined, { style: 'currency', currency: 'USD', minimumFractionDigits: decimalPlaces, maximumFractionDigits: decimalPlaces });
+        if (format === 'Euro') return number.toLocaleString(undefined, { style: 'currency', currency: 'EUR', minimumFractionDigits: decimalPlaces, maximumFractionDigits: decimalPlaces });
+        if (format === 'Percent') return number.toLocaleString(undefined, { style: 'percent', minimumFractionDigits: decimalPlaces, maximumFractionDigits: decimalPlaces });
+        if (format === 'Fixed') return number.toFixed(decimalPlaces);
+        if (format === 'Standard') return number.toLocaleString(undefined, { minimumFractionDigits: decimalPlaces, maximumFractionDigits: decimalPlaces });
+        if (format === 'Scientific') return number.toExponential(decimalPlaces);
+        return number.toLocaleString();
+    }
+
+    if (type === 'Date/Time') {
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return value;
+        if (format === 'Long Date') return date.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        if (format === 'Medium Date') return date.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
+        if (format === 'Short Date') return date.toLocaleDateString();
+        if (format === 'Long Time') return date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+        if (format === 'Medium Time') return date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+        if (format === 'Short Time') return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false });
+        return date.toLocaleString();
+    }
+
+    if (type === 'Yes/No') {
+        const checked = coerceYesNo(value);
+        if (format === 'True/False') return checked ? 'True' : 'False';
+        if (format === 'On/Off') return checked ? 'On' : 'Off';
+        return checked ? 'Yes' : 'No';
+    }
+
+    return formatValue(value, type);
+}
+
 function tableCellMarkup(column, value, options = {}) {
     const classes = [];
     if (isNumericColumn(column.type)) classes.push('numeric-cell');
@@ -27,7 +67,7 @@ function tableCellMarkup(column, value, options = {}) {
     ];
     if (options.insert) attrs.push('data-insert-cell="true"');
 
-    const displayValue = value === '(New)' ? '(New)' : formatValue(value, column.type);
+    const displayValue = value === '(New)' ? '(New)' : formatColumnValue(column, value);
     const content = isYesNoColumn(column.type) && value !== '(New)'
         ? `<input type="checkbox" ${coerceYesNo(value) ? 'checked' : ''} disabled aria-label="${escapeHtml(column.label || column.name)}">`
         : escapeHtml(displayValue);

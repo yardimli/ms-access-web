@@ -90,6 +90,12 @@ document.addEventListener('click', async event => {
         return;
     }
 
+    const formatButton = event.target.closest('[data-format-command]');
+    if (formatButton && isTableDatasheetView(currentView) && !formatButton.disabled) {
+        await window.accessActiveTableController?.changeColumnFormat?.({ command: formatButton.dataset.formatCommand });
+        return;
+    }
+
     const moreFieldsButton = event.target.closest('[data-command="more-fields"]');
     if (moreFieldsButton) {
         openMoreFieldsMenu(moreFieldsButton);
@@ -211,6 +217,11 @@ document.addEventListener('change', async event => {
     const typeSelect = event.target.closest('[data-field-data-type]');
     if (typeSelect && isTableDatasheetView(currentView)) {
         await window.accessActiveTableController?.changeColumnType?.(typeSelect.value);
+    }
+
+    const formatSelect = event.target.closest('[data-field-format]');
+    if (formatSelect && isTableDatasheetView(currentView)) {
+        await window.accessActiveTableController?.changeColumnFormat?.({ format: formatSelect.value });
     }
 });
 

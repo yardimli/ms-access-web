@@ -172,6 +172,7 @@ function initTableViews(db) {
 
                 if (response.payload?.structure) {
                     tableDef.structure = response.payload.structure;
+                    displayColumns = orderedTableColumns(tableDef, prefs);
                 }
 
                 if (Array.isArray(response.payload?.data)) {
@@ -544,10 +545,10 @@ function initTableViews(db) {
             }
         }
 
-        async function changeColumnType(mysqlType) {
+        async function changeColumnType(accessType) {
             const column = columnByName(activeColumnName);
-            const nextType = String(mysqlType || '').toUpperCase();
-            if (!column || !mysqlDataTypes.includes(nextType)) {
+            const nextType = String(accessType || '');
+            if (!column || !tableDataTypes.includes(nextType)) {
                 updateFieldsRibbonState(column);
                 return;
             }
@@ -562,7 +563,7 @@ function initTableViews(db) {
                 return;
             }
 
-            if (String(column.mysqlType || '').toUpperCase() === nextType) {
+            if ((column.accessType || column.type) === nextType) {
                 return;
             }
 
@@ -577,7 +578,7 @@ function initTableViews(db) {
                     action: 'setColumnType',
                     table: tableName,
                     column: column.name,
-                    type: nextType
+                    accessType: nextType
                 });
 
                 if (response.payload?.structure) {
@@ -602,6 +603,55 @@ function initTableViews(db) {
             }
         }
 
+        async function changeColumnFormat(options = {}) {
+            const column = columnByName(activeColumnName);
+            if (!column) {
+                return;
+            }
+
+            const accessType = column.accessType || column.type;
+            let nextFormat = options.format || column.accessFormat || defaultFieldFormats[accessType] || '';
+            let nextDecimalPlaces = Number.isFinite(Number(column.decimalPlaces)) ? Number(column.decimalPlaces) : 2;
+
+            if (options.command === 'currency') nextFormat = 'Currency';
+            if (options.command === 'percent') nextFormat = 'Percent';
+            if (options.command === 'standard') nextFormat = 'Standard';
+            if (options.command === 'decimal-less') nextDecimalPlaces = Math.max(0, nextDecimalPlaces - 1);
+            if (options.command === 'decimal-more') nextDecimalPlaces = Math.min(6, nextDecimalPlaces + 1);
+
+            try {
+                status.textContent = 'Updating field format...';
+                const response = await postSchemaAction({
+                    action: 'setColumnFormat',
+                    table: tableName,
+                    column: column.name,
+                    format: nextFormat,
+                    decimalPlaces: nextDecimalPlaces
+                });
+
+                if (response.payload?.structure) {
+                    tableDef.structure = response.payload.structure;
+                    displayColumns = orderedTableColumns(tableDef, prefs);
+                }
+
+                if (Array.isArray(response.payload?.data)) {
+                    rows.splice(0, rows.length, ...response.payload.data);
+                    assignRowOrderMetadata();
+                }
+
+                renderTable();
+                updateCellCursor();
+                status.textContent = `${column.name} format updated`;
+            } catch (error) {
+                await showMessageDialog({
+                    title: 'Field Format Error',
+                    message: error.message,
+                    confirmText: 'OK'
+                });
+                updateFieldsRibbonState(columnByName(activeColumnName));
+            }
+        }
+
         renderTable();
         updateCellCursor();
         window.accessActiveTableController = {
@@ -610,6 +660,7 @@ function initTableViews(db) {
             setActiveColumn,
             toggleColumnValidation,
             changeColumnType,
+            changeColumnFormat,
             setValidationRule,
             getExpressionContext: () => {
                 const column = columnByName(activeColumnName) || tableDef.structure.columns[0] || {};

@@ -198,12 +198,23 @@
 .fields-format-icons button {
     height: 20px;
     min-width: 15px;
-    color: #aaa;
+    color: #555;
 }
 
 .fields-format-icons i {
-    color: #aaa;
+    color: #555;
     font-size: 15px;
+}
+
+.fields-format-icons button:disabled,
+.fields-format-icons button.disabled {
+    color: #aaa;
+    cursor: default;
+}
+
+.fields-format-icons button:disabled i,
+.fields-format-icons button.disabled i {
+    color: #aaa;
 }
 
 .decimal-button {

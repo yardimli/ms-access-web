@@ -34,6 +34,58 @@ function mysql_type_for_access_type(string $type): string
     };
 }
 
+function mysql_column_type_for_access_type(string $type): string
+{
+    return trim(str_replace([' NULL DEFAULT 0', ' NULL'], '', mysql_type_for_access_type($type)));
+}
+
+function allowed_access_column_types(): array
+{
+    return [
+        'Short Text',
+        'Long Text',
+        'Number',
+        'Large Number',
+        'Date/Time',
+        'Currency',
+        'AutoNumber',
+        'Yes/No',
+        'OLE Object',
+        'Hyperlink',
+        'Attachment',
+    ];
+}
+
+function validate_access_column_type(string $type): string
+{
+    $type = trim($type);
+    if (!in_array($type, allowed_access_column_types(), true)) {
+        throw new RuntimeException('Unsupported Access data type.');
+    }
+    return $type;
+}
+
+function allowed_access_formats_for_type(string $type): array
+{
+    return match ($type) {
+        'Number', 'Large Number', 'Currency' => ['General Number', 'Currency', 'Euro', 'Fixed', 'Standard', 'Percent', 'Scientific'],
+        'Date/Time' => ['General Date', 'Long Date', 'Medium Date', 'Short Date', 'Long Time', 'Medium Time', 'Short Time'],
+        'Yes/No' => ['True/False', 'Yes/No', 'On/Off'],
+        default => [],
+    };
+}
+
+function default_access_format_for_type(string $type): string
+{
+    return match ($type) {
+        'Currency' => 'Currency',
+        'Number', 'Large Number' => 'General Number',
+        'Date/Time' => 'General Date',
+        'Yes/No' => 'Yes/No',
+        default => '',
+    };
+}
+
 function allowed_mysql_column_types(): array
 {
     return [
@@ -109,12 +161,20 @@ function column_definition_sql(array $column, ?string $comment = null): string
     return $sql;
 }
 
-function update_column_metadata(mysqli $db, string $tableName, string $columnName, string $friendlyName): void
+function update_column_metadata(mysqli $db, string $tableName, string $columnName, string $friendlyName, ?string $accessType = null, ?string $mysqlType = null): void
 {
     $metadata = fetch_table_metadata($db, $tableName);
     $metadata['columns'] ??= [];
     $metadata['columns'][$columnName] ??= [];
     $metadata['columns'][$columnName]['friendlyName'] = trim($friendlyName);
+    if ($accessType !== null) {
+        $metadata['columns'][$columnName]['accessType'] = $accessType;
+        $metadata['columns'][$columnName]['accessFormat'] = default_access_format_for_type($accessType);
+        $metadata['columns'][$columnName]['decimalPlaces'] = 2;
+    }
+    if ($mysqlType !== null) {
+        $metadata['columns'][$columnName]['mysqlType'] = $mysqlType;
+    }
     save_table_metadata($db, $tableName, $metadata);
 }
 
@@ -214,7 +274,7 @@ try {
 
     if ($action === 'addColumn') {
         $fieldName = validate_field_name((string) ($request['name'] ?? ''));
-        $type = (string) ($request['type'] ?? 'Short Text');
+        $type = validate_access_column_type((string) ($request['type'] ?? 'Short Text'));
         $friendlyName = trim((string) ($request['friendlyName'] ?? ''));
         $comment = trim((string) ($request['comment'] ?? ''));
 
@@ -227,7 +287,7 @@ try {
             ' ADD COLUMN ' . db_identifier($fieldName) . ' ' . mysql_type_for_access_type($type) .
             ($comment !== '' ? " COMMENT '" . addslashes($comment) . "'" : '')
         );
-        update_column_metadata($db, $resolvedTable, $fieldName, $friendlyName);
+        update_column_metadata($db, $resolvedTable, $fieldName, $friendlyName, $type, mysql_column_type_for_access_type($type));
 
         json_response([
             'ok' => true,
@@ -375,9 +435,59 @@ try {
         exit;
     }
 
+    if ($action === 'setColumnFormat') {
+        $columnName = validate_field_name((string) ($request['column'] ?? ''));
+        $format = trim((string) ($request['format'] ?? ''));
+        $decimalPlaces = max(0, min(6, (int) ($request['decimalPlaces'] ?? 2)));
+
+        if (!column_exists($db, $resolvedTable, $columnName)) {
+            throw new RuntimeException('Field was not found.');
+        }
+
+        [$columns] = fetch_table_columns($db, $resolvedTable);
+        $column = null;
+        foreach ($columns as $candidate) {
+            if (strcasecmp($candidate['name'], $columnName) === 0) {
+                $column = $candidate;
+                break;
+            }
+        }
+
+        $accessType = (string) ($column['accessType'] ?? $column['type'] ?? 'Short Text');
+        $allowedFormats = allowed_access_formats_for_type($accessType);
+        if (!$allowedFormats) {
+            throw new RuntimeException('This field type does not support a Format setting.');
+        }
+
+        if ($format === '') {
+            $format = default_access_format_for_type($accessType);
+        }
+
+        if (!in_array($format, $allowedFormats, true)) {
+            throw new RuntimeException('Unsupported format for ' . $accessType . '.');
+        }
+
+        $metadata = fetch_table_metadata($db, $resolvedTable);
+        $metadata['columns'] ??= [];
+        $metadata['columns'][$columnName] ??= [];
+        $metadata['columns'][$columnName]['accessType'] = $accessType;
+        $metadata['columns'][$columnName]['mysqlType'] = (string) ($column['actualMysqlType'] ?? $column['mysqlType'] ?? '');
+        $metadata['columns'][$columnName]['accessFormat'] = $format;
+        $metadata['columns'][$columnName]['decimalPlaces'] = $decimalPlaces;
+        save_table_metadata($db, $resolvedTable, $metadata);
+
+        json_response([
+            'ok' => true,
+            'table' => $resolvedTable,
+            'payload' => fetch_table_payload($db, $resolvedTable, true),
+        ]);
+        exit;
+    }
+
     if ($action === 'setColumnType') {
         $columnName = validate_field_name((string) ($request['column'] ?? ''));
-        $newType = validate_mysql_column_type((string) ($request['type'] ?? ''));
+        $accessType = validate_access_column_type((string) ($request['accessType'] ?? $request['type'] ?? 'Short Text'));
+        $newType = mysql_column_type_for_access_type($accessType);
 
         if (!column_exists($db, $resolvedTable, $columnName)) {
             throw new RuntimeException('Field was not found.');
@@ -390,7 +500,7 @@ try {
         $definition = fetch_column_definition($db, $resolvedTable, $columnName);
         $currentType = strtoupper((string) ($definition['column_type'] ?? ''));
 
-        if ($currentType !== $newType) {
+        if ($currentType !== strtoupper($newType)) {
             verify_column_type_change($db, $resolvedTable, $columnName, $newType, $definition);
             $definition['column_type'] = $newType;
             $definition['column_default'] = null;
@@ -400,6 +510,15 @@ try {
                 column_definition_sql($definition)
             );
         }
+
+        $metadata = fetch_table_metadata($db, $resolvedTable);
+        $metadata['columns'] ??= [];
+        $metadata['columns'][$columnName] ??= [];
+        $metadata['columns'][$columnName]['accessType'] = $accessType;
+        $metadata['columns'][$columnName]['mysqlType'] = $newType;
+        $metadata['columns'][$columnName]['accessFormat'] = default_access_format_for_type($accessType);
+        $metadata['columns'][$columnName]['decimalPlaces'] = 2;
+        save_table_metadata($db, $resolvedTable, $metadata);
 
         json_response([
             'ok' => true,
