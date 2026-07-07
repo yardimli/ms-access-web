@@ -55,6 +55,11 @@ try {
     $columns = is_array($request['columns'] ?? null) ? $request['columns'] : [];
     $tableName = trim((string) ($request['tableName'] ?? ''));
     $fieldName = trim((string) ($request['fieldName'] ?? ''));
+    $purpose = trim((string) ($request['purpose'] ?? 'validation'));
+    $interpretNatural = filter_var($request['interpretNatural'] ?? false, FILTER_VALIDATE_BOOL);
+    if (!in_array($purpose, ['validation', 'default', 'calculated'], true)) {
+        $purpose = 'validation';
+    }
 
     if ($expression === '') {
         throw new RuntimeException('Expression is empty.');
@@ -70,6 +75,8 @@ try {
             'model' => $model,
             'tableName' => $tableName,
             'fieldName' => $fieldName,
+            'purpose' => $purpose,
+            'interpretNatural' => $interpretNatural,
             'expression' => $expression,
             'error' => 'OpenRouter is not configured.',
         ]);
@@ -93,8 +100,8 @@ try {
             [
                 'role' => 'system',
                 'content' => implode("\n", [
-                    'Convert Microsoft Access validation expressions to JavaScript.',
-                    'First validate whether the expression is a valid Microsoft Access validation expression using the supplied fields.',
+                    'Convert Microsoft Access expressions or natural-language expression instructions to JavaScript.',
+                    'Convert the supplied expression to JavaScript and validate that it can be converted safely.',
                     'Return strict JSON only with keys ok, javascript, error, and notes.',
                     'If the expression is invalid or cannot be converted safely, return {"ok":false,"javascript":"","error":"short reason","notes":""}.',
                     'If it can be converted, return {"ok":true,"javascript":"function(fields) { ... }","error":"","notes":"..."}',
@@ -103,7 +110,12 @@ try {
                     'Use fields["ColumnName"] for table fields.',
                     'Use plain JavaScript only. Do not use accessFns or helper libraries.',
                     'Example: IsNull([CreditLimit]) becomes function(fields) { return fields["CreditLimit"] == null; }.',
-                    'Return a boolean-compatible validation result.',
+                    'If purpose is validation, return a boolean-compatible validation result.',
+                    'If purpose is default, return the default value for a new record.',
+                    'If purpose is calculated, return the calculated field value.',
+                    'If purpose is calculated, do not reference the target fieldName in the returned JavaScript.',
+                    'If interpretNatural is true, treat expression as natural-language instructions for the JavaScript function instead of Microsoft Access syntax.',
+                    'If interpretNatural is false, first validate whether the expression is a valid Microsoft Access expression using the supplied fields.',
                     'Do not include markdown, comments, imports, fetch, eval, Function, document, window, globalThis, or side effects.',
                 ]),
             ],
@@ -114,6 +126,8 @@ try {
                     'fieldName' => $fieldName,
                     'columns' => $columnSummary,
                     'expression' => $expression,
+                    'purpose' => $purpose,
+                    'interpretNatural' => $interpretNatural,
                 ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
             ],
         ],
@@ -145,6 +159,8 @@ try {
             'model' => $model,
             'tableName' => $tableName,
             'fieldName' => $fieldName,
+            'purpose' => $purpose,
+            'interpretNatural' => $interpretNatural,
             'expression' => $expression,
             'error' => $curlError,
         ]);
@@ -161,6 +177,8 @@ try {
             'model' => $model,
             'tableName' => $tableName,
             'fieldName' => $fieldName,
+            'purpose' => $purpose,
+            'interpretNatural' => $interpretNatural,
             'expression' => $expression,
             'error' => $message,
         ]);
@@ -181,6 +199,8 @@ try {
             'model' => (string) ($response['model'] ?? $model),
             'tableName' => $tableName,
             'fieldName' => $fieldName,
+            'purpose' => $purpose,
+            'interpretNatural' => $interpretNatural,
             'expression' => $expression,
             'error' => $modelError,
             'notes' => (string) ($modelJson['notes'] ?? ''),
@@ -196,6 +216,8 @@ try {
             'model' => (string) ($response['model'] ?? $model),
             'tableName' => $tableName,
             'fieldName' => $fieldName,
+            'purpose' => $purpose,
+            'interpretNatural' => $interpretNatural,
             'expression' => $expression,
             'rawContent' => $content,
         ]);
@@ -209,6 +231,8 @@ try {
         'model' => (string) ($response['model'] ?? $model),
         'tableName' => $tableName,
         'fieldName' => $fieldName,
+        'purpose' => $purpose,
+        'interpretNatural' => $interpretNatural,
         'expression' => $expression,
         'javascript' => $javascript,
         'notes' => (string) ($modelJson['notes'] ?? ''),

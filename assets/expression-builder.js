@@ -174,11 +174,11 @@
         return { js: source.trim(), result };
     }
 
-    async function requestJavascriptFromLlm({ expression, columns, tableName, fieldName, signal }) {
+    async function requestJavascriptFromLlm({ expression, columns, tableName, fieldName, purpose, interpretNatural, signal }) {
         const response = await fetch('api/expression.php', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ expression, columns, tableName, fieldName }),
+            body: JSON.stringify({ expression, columns, tableName, fieldName, purpose, interpretNatural }),
             signal
         });
         const payload = await response.json().catch(() => ({}));
@@ -186,6 +186,48 @@
             throw new Error(payload.error || 'Expression conversion failed.');
         }
         return payload;
+    }
+
+    function enableDialogDrag(dialog) {
+        const title = dialog.querySelector('.expression-builder-title');
+        if (!title) {
+            return;
+        }
+
+        title.addEventListener('pointerdown', event => {
+            if (event.button !== 0 || event.target.closest('button')) {
+                return;
+            }
+
+            const rect = dialog.getBoundingClientRect();
+            const offsetX = event.clientX - rect.left;
+            const offsetY = event.clientY - rect.top;
+
+            dialog.style.position = 'fixed';
+            dialog.style.margin = '0';
+            dialog.style.left = `${rect.left}px`;
+            dialog.style.top = `${rect.top}px`;
+            title.setPointerCapture?.(event.pointerId);
+
+            const move = moveEvent => {
+                const maxLeft = Math.max(0, window.innerWidth - rect.width);
+                const maxTop = Math.max(0, window.innerHeight - rect.height);
+                const nextLeft = Math.min(maxLeft, Math.max(0, moveEvent.clientX - offsetX));
+                const nextTop = Math.min(maxTop, Math.max(0, moveEvent.clientY - offsetY));
+                dialog.style.left = `${nextLeft}px`;
+                dialog.style.top = `${nextTop}px`;
+            };
+
+            const stop = stopEvent => {
+                title.releasePointerCapture?.(stopEvent.pointerId);
+                window.removeEventListener('pointermove', move);
+                window.removeEventListener('pointerup', stop);
+            };
+
+            window.addEventListener('pointermove', move);
+            window.addEventListener('pointerup', stop, { once: true });
+            event.preventDefault();
+        });
     }
 
     function openExpressionBuilder(options = {}) {
@@ -210,18 +252,42 @@
         const previewResult = dialog.querySelector('[data-expression-result]');
         const jsEditor = dialog.querySelector('[data-expression-js-editor]');
         const jsInput = dialog.querySelector('[data-expression-js-input]');
+        const naturalInput = dialog.querySelector('[data-expression-natural]');
+        const jsToggle = dialog.querySelector('[data-expression-toggle-js]');
+        const promptText = dialog.querySelector('[data-expression-prompt]');
+        const exampleText = dialog.querySelector('[data-expression-example]');
         const tableName = options.tableName || 'Table';
+        const purpose = options.purpose || 'validation';
+        const allowFieldReferences = columns.length > 0;
+        const blockedFieldNames = Array.isArray(options.blockedFieldNames)
+            ? options.blockedFieldNames.map(name => String(name).toLowerCase())
+            : (purpose === 'calculated' && options.fieldName ? [String(options.fieldName).toLowerCase()] : []);
+        const allowInitialFieldFallback = purpose === 'validation' && allowFieldReferences && options.fieldName;
+        const initialExpression = options.expression || (allowInitialFieldFallback ? `[${options.fieldName}]` : '');
 
-        let elementMode = 'table';
+        let elementMode = allowFieldReferences ? 'table' : 'functions';
         let selectedCategory = columns[0]?.name || '';
         let selectedValue = '<Value>';
         let generatedJavascript = options.javascript || '';
-        let lastConvertedExpression = generatedJavascript ? (options.expression || (options.fieldName ? `[${options.fieldName}]` : '')).trim() : '';
+        let lastConvertedExpression = generatedJavascript ? initialExpression.trim() : '';
+        let lastConvertedNatural = Boolean(options.interpretNatural);
         let debounceTimer = null;
         let pendingController = null;
 
-        textarea.value = options.expression || (options.fieldName ? `[${options.fieldName}]` : '');
+        textarea.value = initialExpression;
         jsInput.value = generatedJavascript;
+        naturalInput.checked = Boolean(options.interpretNatural);
+
+        if (purpose === 'default' && !allowFieldReferences) {
+            promptText.innerHTML = 'Enter an expression for the default value in this field:';
+            exampleText.textContent = '(Examples of expressions include "New", Date(), 0, or True)';
+        } else if (purpose === 'default') {
+            promptText.innerHTML = 'Enter an expression for the default value in this field:';
+            exampleText.textContent = '(Examples of expressions include Date(), [CreatedBy], or "New")';
+        } else if (purpose === 'calculated') {
+            promptText.innerHTML = 'Enter an expression to calculate the value in this field:';
+            exampleText.textContent = '(Examples of expressions include [field1] + [field2] and [Quantity] * [Price])';
+        }
 
         function setError(message) {
             error.textContent = message;
@@ -235,6 +301,12 @@
             description.innerHTML = value
                 ? `<a href="#">${escapeHtml(functionNameSet().has(value) ? builtInFunctions.signature(value) : value)}</a><br>${escapeHtml(functionDescription || descriptions[value] || `Inserts ${value} into the expression.`)}`
                 : '';
+        }
+
+        function blockedFieldMessage(expression) {
+            const bracketMatches = [...String(expression || '').matchAll(/\[([^\]]+)\]/g)];
+            const blocked = bracketMatches.find(match => blockedFieldNames.includes(match[1].trim().toLowerCase()));
+            return blocked ? `Calculated fields cannot reference their own field [${blocked[1]}].` : '';
         }
 
         function formatPreviewResult(value) {
@@ -274,6 +346,7 @@
         function setGeneratedJavascript(value, sourceExpression = textarea.value.trim()) {
             generatedJavascript = String(value || '').trim();
             lastConvertedExpression = generatedJavascript ? sourceExpression : '';
+            lastConvertedNatural = naturalInput.checked;
             if (jsInput.value !== generatedJavascript) {
                 jsInput.value = generatedJavascript;
             }
@@ -292,7 +365,7 @@
                 setGeneratedJavascript('');
                 return;
             }
-            if (generatedJavascript && expression === lastConvertedExpression) {
+            if (generatedJavascript && expression === lastConvertedExpression && naturalInput.checked === lastConvertedNatural) {
                 updatePreview();
                 return;
             }
@@ -307,6 +380,8 @@
                         columns,
                         tableName,
                         fieldName: options.fieldName || '',
+                        purpose,
+                        interpretNatural: naturalInput.checked,
                         signal: pendingController.signal
                     });
                     compileJavascriptFunction(payload.javascript);
@@ -333,7 +408,7 @@
 
         function renderElements() {
             const items = [
-                { value: 'table', label: tableName, icon: '<i class="fas fa-table"></i>' },
+                ...(allowFieldReferences ? [{ value: 'table', label: tableName, icon: '<i class="fas fa-table"></i>' }] : []),
                 { value: 'functions', label: 'Functions', icon: '<i class="fas fa-superscript"></i>' },
                 { value: 'builtins', label: 'Built-In Functions', icon: '<i class="fas fa-superscript"></i>' },
                 { value: 'constants', label: 'Constants', icon: '<i class="fas fa-plus-square"></i>' },
@@ -344,7 +419,7 @@
 
         function renderBrowser() {
             renderElements();
-            if (elementMode === 'table') {
+            if (elementMode === 'table' && allowFieldReferences) {
                 const fields = columns.map(column => column.name);
                 selectedCategory = fields.includes(selectedCategory) ? selectedCategory : fields[0] || '';
                 selectedValue = '<Value>';
@@ -404,6 +479,9 @@
             const elementButton = event.target.closest('[data-expression-element]');
             if (elementButton) {
                 elementMode = elementButton.dataset.expressionElement;
+                if (elementMode === 'table' && !allowFieldReferences) {
+                    elementMode = 'functions';
+                }
                 selectedCategory = elementMode === 'table' ? columns[0]?.name || '' : '<All>';
                 renderBrowser();
                 return;
@@ -436,12 +514,14 @@
 
             if (event.target.closest('[data-expression-help], [data-expression-help-button]')) {
                 event.preventDefault();
-                setDescription('Double-click a value to insert it. Field names are inserted in square brackets.');
+                setDescription(allowFieldReferences
+                    ? 'Double-click a value to insert it. Field names are inserted in square brackets.'
+                    : 'Double-click a function, constant, or operator to insert it. This expression cannot reference table fields.');
                 return;
             }
 
             if (event.target.closest('[data-expression-toggle-js]')) {
-                jsEditor.hidden = !jsEditor.hidden;
+                jsEditor.hidden = !jsToggle.checked;
                 if (!jsEditor.hidden) {
                     jsInput.focus();
                 }
@@ -461,7 +541,13 @@
                 dialog.close('ok');
                 return;
             }
-            const message = validateExpression(textarea.value, columns);
+            const blockedMessage = blockedFieldMessage(textarea.value);
+            if (blockedMessage) {
+                setError(blockedMessage);
+                textarea.focus();
+                return;
+            }
+            const message = naturalInput.checked ? '' : validateExpression(textarea.value, columns);
             if (message) {
                 setError(message);
                 textarea.focus();
@@ -476,6 +562,7 @@
             } catch (errorMessage) {
                 setError(errorMessage.message || String(errorMessage));
                 jsEditor.hidden = false;
+                jsToggle.checked = true;
                 jsInput.focus();
                 return;
             }
@@ -484,7 +571,7 @@
 
         textarea.addEventListener('input', () => {
             setError('');
-            if (textarea.value.trim() !== lastConvertedExpression) {
+            if (textarea.value.trim() !== lastConvertedExpression || naturalInput.checked !== lastConvertedNatural) {
                 generatedJavascript = '';
                 jsInput.value = '';
             }
@@ -497,7 +584,25 @@
             setGeneratedJavascript(jsInput.value, textarea.value.trim());
         });
 
+        naturalInput.addEventListener('change', () => {
+            setError('');
+            if (textarea.value.trim() !== lastConvertedExpression || naturalInput.checked !== lastConvertedNatural) {
+                generatedJavascript = '';
+                jsInput.value = '';
+            }
+            updatePreview();
+            queueLlmConversion();
+        });
+
+        jsToggle.addEventListener('change', () => {
+            jsEditor.hidden = !jsToggle.checked;
+            if (!jsEditor.hidden) {
+                jsInput.focus();
+            }
+        });
+
         document.body.appendChild(dialog);
+        enableDialogDrag(dialog);
         renderBrowser();
         updatePreview();
         if (!generatedJavascript) {
@@ -511,7 +616,8 @@
                 const value = dialog.returnValue === 'ok'
                     ? {
                         expression: textarea.value.trim(),
-                        javascript: (generatedJavascript || jsInput.value).trim()
+                        javascript: (generatedJavascript || jsInput.value).trim(),
+                        interpretNatural: naturalInput.checked
                     }
                     : null;
                 dialog.remove();

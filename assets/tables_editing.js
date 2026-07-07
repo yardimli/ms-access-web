@@ -31,7 +31,7 @@ function positionActiveCellEditor() {
     editor.style.left = `${rect.left}px`;
     editor.style.top = `${rect.top}px`;
     editor.style.width = `${rect.width}px`;
-    editor.style.height = `${rect.height}px`;
+    editor.style.height = activeCellEditor.lookupMode === 'multiple' ? 'auto' : `${rect.height}px`;
 }
 
 function normalizeCellValue(value, type) {
@@ -80,6 +80,23 @@ function showValidationDialog(message) {
     });
 }
 
+function lookupOptionValue(option) {
+    return typeof option === 'object' && option !== null ? String(option.key) : String(option);
+}
+
+function lookupOptionLabel(option) {
+    return typeof option === 'object' && option !== null ? String(option.value) : String(option);
+}
+
+function editorValue(activeEditor) {
+    if (activeEditor.lookupMode === 'multiple') {
+        return Array.from(activeEditor.editor.querySelectorAll('input[type="checkbox"]:checked'))
+            .map(input => input.value)
+            .join(',');
+    }
+    return activeEditor.input.type === 'checkbox' ? activeEditor.input.checked : activeEditor.input.value;
+}
+
 function closeActiveCellEditor(commit = true) {
     if (!activeCellEditor) {
         return true;
@@ -102,7 +119,7 @@ function closeActiveCellEditor(commit = true) {
         onCancelRowEdit,
         onClose
     } = activeCellEditor;
-    let nextValue = commit ? (input.type === 'checkbox' ? input.checked : input.value) : originalValue;
+    let nextValue = commit ? editorValue(activeCellEditor) : originalValue;
 
     if (commit) {
         try {
@@ -141,8 +158,6 @@ function shouldKeepCellEditorOpen(target) {
 }
 
 function enableEditableCells(container, rows, options = {}) {
-    const columnDefs = options.columns || [];
-
     function openCellEditor(cell) {
         if (!cell) {
             return false;
@@ -160,7 +175,11 @@ function enableEditableCells(container, rows, options = {}) {
         }
 
         const column = cell.dataset.column;
+        const columnDefs = typeof options.columns === 'function' ? options.columns() : (options.columns || []);
         const columnDef = columnDefs.find(item => item.name === column) || { name: column, type: cell.dataset.type };
+        if (columnDef.accessType === 'Calculated Field' || columnDef.calculatedJavascript) {
+            return false;
+        }
         const type = cell.dataset.type;
         const originalValue = isInsertRow
             ? (options.getInsertValue?.(column) ?? '')
@@ -170,14 +189,36 @@ function enableEditableCells(container, rows, options = {}) {
                     ? (cell.querySelector('input[type="checkbox"]')?.checked ? '1' : '0')
                     : cell.textContent.trim();
         const editor = document.createElement('div');
-        const input = document.createElement('input');
+        let input = document.createElement('input');
 
         editor.className = `cell-edit-control ${isDateColumn(type) ? 'date-editor' : ''}`;
-        input.type = isYesNoColumn(type) ? 'checkbox' : isDateColumn(type) ? 'date' : 'text';
-        input.className = 'cell-edit-input';
-        if (isYesNoColumn(type)) {
+        if (columnDef.lookup?.mode === 'single') {
+            input = document.createElement('select');
+            input.className = 'cell-edit-input';
+            const current = isInsertRow || originalValue === '(New)' ? '' : String(originalValue ?? '');
+            input.innerHTML = `<option value=""></option>${(columnDef.lookup.source || []).map(option => {
+                const value = lookupOptionValue(option);
+                return `<option value="${escapeHtml(value)}" ${value === current ? 'selected' : ''}>${escapeHtml(lookupOptionLabel(option))}</option>`;
+            }).join('')}`;
+        } else if (columnDef.lookup?.mode === 'multiple') {
+            input = document.createElement('input');
+            input.type = 'hidden';
+            input.className = 'cell-edit-input';
+            const selected = new Set(String(isInsertRow || originalValue === '(New)' ? '' : originalValue ?? '').split(',').map(item => item.trim()).filter(Boolean));
+            const box = document.createElement('div');
+            box.className = 'lookup-checkbox-editor';
+            box.innerHTML = (columnDef.lookup.source || []).map(option => {
+                const value = lookupOptionValue(option);
+                return `<label><input type="checkbox" value="${escapeHtml(value)}" ${selected.has(value) ? 'checked' : ''}> <span>${escapeHtml(lookupOptionLabel(option))}</span></label>`;
+            }).join('');
+            editor.appendChild(box);
+        } else if (isYesNoColumn(type)) {
+            input.type = 'checkbox';
+            input.className = 'cell-edit-input';
             input.checked = isInsertRow ? false : coerceYesNo(originalValue);
         } else {
+            input.type = isDateColumn(type) ? 'date' : 'text';
+            input.className = 'cell-edit-input';
             const editValue = isInsertRow || originalValue === '(New)' ? '' : originalValue;
             input.value = isDateColumn(type) ? dateInputValue(editValue) : editValue;
         }
@@ -200,7 +241,8 @@ function enableEditableCells(container, rows, options = {}) {
             onCancelInsert: options.onCancelInsert,
             onRowEdit: options.onRowEdit,
             onCancelRowEdit: options.onCancelRowEdit,
-            onClose: options.onClose
+            onClose: options.onClose,
+            lookupMode: columnDef.lookup?.mode || ''
         };
         positionActiveCellEditor();
 

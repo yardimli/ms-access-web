@@ -16,6 +16,16 @@ function coerceYesNo(value) {
 
 function formatColumnValue(column, value) {
     if (value === null || value === undefined || value === '') return '';
+    if (column.lookup?.source) {
+        const labelFor = raw => {
+            const match = column.lookup.source.find(option => lookupOptionValue(option) === String(raw));
+            return match ? lookupOptionLabel(match) : String(raw);
+        };
+        if (column.lookup.mode === 'multiple') {
+            return String(value).split(',').map(item => item.trim()).filter(Boolean).map(labelFor).join(', ');
+        }
+        return labelFor(value);
+    }
     const type = column.accessType || column.type;
     const format = column.accessFormat || defaultFieldFormats[type] || '';
     const decimalPlaces = Number.isFinite(Number(column.decimalPlaces)) ? Number(column.decimalPlaces) : 2;
@@ -167,7 +177,16 @@ const addColumnTypes = [
     'Long Text',
     'Attachment',
     'Hyperlink',
-    'Calculated Field'
+    'Calculated Field',
+    'Address',
+    'Category',
+    'Name',
+    'Payment Type',
+    'Phone',
+    'Priority',
+    'Start and End Dates',
+    'Status',
+    'Tag'
 ];
 
 function showColumnDialog({
@@ -339,6 +358,81 @@ function showMessageDialog({ title, message, confirmText = 'OK' }) {
     });
 
     return openMessageDialogPromise;
+}
+
+function showConfirmDialog({ title, message, confirmText = 'Delete', cancelText = 'Cancel' }) {
+    return new Promise(resolve => {
+        const dialog = document.createElement('dialog');
+        dialog.className = 'access-dialog';
+        dialog.innerHTML = `
+            <form method="dialog">
+                <div class="access-dialog-title">
+                    <span>${escapeHtml(title)}</span>
+                    <button type="button" data-dialog-cancel aria-label="Close"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="access-dialog-body">
+                    <p>${escapeHtml(message)}</p>
+                </div>
+                <div class="dialog-actions">
+                    <button type="button" data-dialog-cancel>${escapeHtml(cancelText)}</button>
+                    <button class="primary" type="submit">${escapeHtml(confirmText)}</button>
+                </div>
+            </form>
+        `;
+        document.body.appendChild(dialog);
+        dialog.querySelectorAll('[data-dialog-cancel]').forEach(button => {
+            button.addEventListener('click', () => dialog.close('cancel'), { once: true });
+        });
+        dialog.querySelector('form').addEventListener('submit', event => {
+            event.preventDefault();
+            dialog.close('confirm');
+        });
+        dialog.addEventListener('close', () => {
+            const confirmed = dialog.returnValue === 'confirm';
+            dialog.remove();
+            resolve(confirmed);
+        }, { once: true });
+        dialog.showModal();
+    });
+}
+
+function showChoiceDialog({ title, message, choices = [] }) {
+    return new Promise(resolve => {
+        const dialog = document.createElement('dialog');
+        dialog.className = 'access-dialog';
+        dialog.innerHTML = `
+            <form method="dialog">
+                <div class="access-dialog-title">
+                    <span>${escapeHtml(title)}</span>
+                    <button type="button" data-dialog-choice="" aria-label="Close"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="access-dialog-body">
+                    <p>${escapeHtml(message)}</p>
+                </div>
+                <div class="dialog-actions">
+                    ${choices.map(choice => `
+                        <button class="${choice.primary ? 'primary' : ''}" type="button" data-dialog-choice="${escapeHtml(choice.value)}">
+                            ${escapeHtml(choice.label)}
+                        </button>
+                    `).join('')}
+                </div>
+            </form>
+        `;
+        document.body.appendChild(dialog);
+        dialog.querySelectorAll('[data-dialog-choice]').forEach(button => {
+            button.addEventListener('click', () => dialog.close(button.dataset.dialogChoice || ''), { once: true });
+        });
+        dialog.addEventListener('cancel', event => {
+            event.preventDefault();
+            dialog.close('');
+        });
+        dialog.addEventListener('close', () => {
+            const value = dialog.returnValue || '';
+            dialog.remove();
+            resolve(value);
+        }, { once: true });
+        dialog.showModal();
+    });
 }
 
 function nextSortDirection(current) {

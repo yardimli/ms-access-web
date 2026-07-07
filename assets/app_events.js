@@ -78,6 +78,18 @@ document.addEventListener('click', async event => {
         return;
     }
 
+    const defaultValueCommand = event.target.closest('[data-command="default"]');
+    if (defaultValueCommand && isTableDatasheetView(currentView) && !defaultValueCommand.disabled) {
+        await window.accessActiveTableController?.openDefaultValueBuilder?.();
+        return;
+    }
+
+    const expressionCommand = event.target.closest('[data-command="expression"]');
+    if (expressionCommand && isTableDatasheetView(currentView) && !expressionCommand.disabled) {
+        await window.accessActiveTableController?.openCalculatedExpressionBuilder?.();
+        return;
+    }
+
     const validationToggle = event.target.closest('[data-command="required"], [data-command="unique"], [data-command="indexed"]');
     if (validationToggle && isTableDatasheetView(currentView)) {
         await window.accessActiveTableController?.toggleColumnValidation?.(validationToggle.dataset.command);
@@ -87,6 +99,23 @@ document.addEventListener('click', async event => {
     const validationButton = event.target.closest('[data-command="validation"]');
     if (validationButton && isTableDatasheetView(currentView)) {
         openValidationMenu(validationButton);
+        return;
+    }
+
+    const addDeleteCommand = event.target.closest('[data-command="text-field"], [data-command="number"], [data-command="currency"], [data-command="date"], [data-command="yes-no"], [data-command="delete"]');
+    if (addDeleteCommand && isTableDatasheetView(currentView) && addDeleteCommand.closest('.fields-add-delete')) {
+        const commandType = {
+            'text-field': 'Short Text',
+            number: 'Number',
+            currency: 'Currency',
+            date: 'Date/Time',
+            'yes-no': 'Yes/No'
+        }[addDeleteCommand.dataset.command];
+        if (addDeleteCommand.dataset.command === 'delete') {
+            await window.accessActiveTableController?.deleteActiveColumn?.();
+        } else {
+            await window.accessActiveTableController?.addColumnFromType?.(commandType);
+        }
         return;
     }
 
@@ -104,6 +133,7 @@ document.addEventListener('click', async event => {
 
     const moreFieldsItem = event.target.closest('[data-more-field]');
     if (moreFieldsItem) {
+        await window.accessActiveTableController?.addColumnFromType?.(moreFieldsItem.dataset.moreField);
         closeMoreFieldsMenu();
         return;
     }
@@ -116,7 +146,7 @@ document.addEventListener('click', async event => {
 
     const calculatedField = event.target.closest('[data-calculated-field]');
     if (calculatedField) {
-        status.textContent = `${calculatedField.dataset.calculatedField} calculated field selected`;
+        await window.accessActiveTableController?.addColumnFromType?.('Calculated Field', { calculatedResultType: calculatedField.dataset.calculatedField });
         closeMoreFieldsMenu();
         return;
     }
@@ -134,7 +164,7 @@ document.addEventListener('click', async event => {
                 const context = window.accessActiveTableController?.getExpressionContext?.() || {};
                 const result = await window.ExpressionBuilder?.open?.(context);
                 if (result !== null && result !== undefined) {
-                    await window.accessActiveTableController?.setValidationRule?.(result.expression, result.javascript);
+                    await window.accessActiveTableController?.setValidationRule?.(result.expression, result.javascript, result.interpretNatural);
                 }
             } catch (error) {
                 status.textContent = error.message || 'Expression Builder could not open';

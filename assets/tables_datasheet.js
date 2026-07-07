@@ -303,6 +303,7 @@ function initTableViews(db) {
             }
 
             try {
+                recalculateRow(row);
                 const cleanRow = {};
                 tableDef.structure.columns.forEach(column => {
                     cleanRow[column.name] = normalizeCellValue(row[column.name] ?? '', column.type);
@@ -411,6 +412,103 @@ function initTableViews(db) {
             return tableDef.structure.columns.find(column => column.name === name) || tableDef.structure.columns[0] || null;
         }
 
+        function hasProtectedFieldSettings(column) {
+            return Boolean(
+                column?.primaryKey ||
+                column?.lookup ||
+                column?.accessType === 'Calculated Field' ||
+                column?.calculatedJavascript
+            );
+        }
+
+        function addableAccessType(type) {
+            const normalized = type === 'Date & Time' ? 'Date/Time' : type;
+            const numberFormats = new Set(['General', 'Fixed', 'Standard', 'Scientific']);
+            const dateFormats = new Set(['Short Date', 'Medium Date', 'Long Date', 'Time am/pm', 'Medium Time', 'Time 24hour']);
+            const yesNoFormats = new Set(['Check Box', 'True/False', 'On/Off']);
+
+            if (numberFormats.has(normalized)) {
+                return 'Number';
+            }
+            if (normalized === 'Euro') {
+                return 'Currency';
+            }
+            if (dateFormats.has(normalized)) {
+                return 'Date/Time';
+            }
+            if (yesNoFormats.has(normalized)) {
+                return 'Yes/No';
+            }
+
+            return normalized;
+        }
+
+        function applyTablePayload(payload = {}) {
+            if (payload.structure) {
+                tableDef.structure = payload.structure;
+                displayColumns = orderedTableColumns(tableDef, prefs);
+            }
+            if (Array.isArray(payload.data)) {
+                rows.splice(0, rows.length, ...payload.data);
+                assignRowOrderMetadata();
+            }
+        }
+
+        function rememberInsertedColumnPosition(newColumnName, afterColumnName) {
+            if (!newColumnName || !afterColumnName) {
+                return;
+            }
+
+            const currentOrder = orderedTableColumns(tableDef, prefs).map(column => column.name);
+            const withoutNewColumn = currentOrder.filter(name => name !== newColumnName);
+            const afterIndex = withoutNewColumn.indexOf(afterColumnName);
+            if (afterIndex === -1) {
+                return;
+            }
+
+            withoutNewColumn.splice(afterIndex + 1, 0, newColumnName);
+            savePrefs({
+                ...prefs,
+                columnOrder: withoutNewColumn
+            });
+            displayColumns = orderedTableColumns(tableDef, prefs);
+        }
+
+        function calculatedColumns() {
+            return tableDef.structure.columns.filter(column => column.calculatedJavascript);
+        }
+
+        function compileCalculatedFunction(source) {
+            return Function('"use strict"; return (' + source + ');')();
+        }
+
+        function recalculateRow(row) {
+            const fields = { ...row };
+            calculatedColumns().forEach(column => {
+                try {
+                    const fn = compileCalculatedFunction(column.calculatedJavascript);
+                    const value = fn(fields);
+                    row[column.name] = value ?? '';
+                    fields[column.name] = row[column.name];
+                } catch (error) {
+                    row[column.name] = '#Error';
+                    fields[column.name] = '#Error';
+                }
+            });
+        }
+
+        function defaultValueForColumn(column) {
+            if (!column?.defaultJavascript) {
+                return '';
+            }
+            try {
+                const fn = compileCalculatedFunction(column.defaultJavascript);
+                return fn({}) ?? '';
+            } catch {
+                return '';
+            }
+        }
+
         function setActiveColumn(name) {
             activeColumnName = name || activeColumnName;
             updateFieldsRibbonState(columnByName(activeColumnName));
@@ -451,6 +549,264 @@ function initTableViews(db) {
             status.textContent = result.name === oldName ? `Updated ${oldName}` : `Renamed ${oldName} to ${result.name}`;
             await loadView(currentView, { replaceActive: true });
             return result;
+        }
+
+        async function saveCalculatedField(columnName, expressionResult, options = {}) {
+            if (!expressionResult) {
+                return;
+            }
+            const response = await postSchemaAction({
+                action: 'setCalculatedField',
+                table: tableName,
+                column: columnName,
+                expression: expressionResult.expression,
+                javascript: expressionResult.javascript,
+                interpretNatural: Boolean(expressionResult.interpretNatural)
+            });
+            applyTablePayload(response.payload);
+            if (options.updateExistingRows) {
+                await updateCalculatedFieldForExistingRows(columnName);
+            }
+        }
+
+        async function updateCalculatedFieldForExistingRows(columnName) {
+            const primaryKey = primaryKeyName();
+            if (!primaryKey) {
+                await showMessageDialog({
+                    title: 'Update Calculated Field',
+                    message: 'This table does not have a primary key, so existing rows cannot be updated safely.',
+                    confirmText: 'OK'
+                });
+                return;
+            }
+
+            const rowSnapshots = rows.map(row => ({ ...row }));
+            let latestPayload = null;
+            status.textContent = `Updating ${rowSnapshots.length} rows...`;
+
+            for (let index = 0; index < rowSnapshots.length; index += 1) {
+                const row = rowSnapshots[index];
+                const primaryKeyValue = row[primaryKey];
+                recalculateRow(row);
+
+                const cleanRow = {};
+                tableDef.structure.columns.forEach(column => {
+                    cleanRow[column.name] = normalizeCellValue(row[column.name] ?? '', column.type);
+                });
+
+                status.textContent = `Updating ${columnName}: ${index + 1} of ${rowSnapshots.length}`;
+                const response = await postRecordAction({
+                    action: 'update',
+                    table: tableName,
+                    primaryKeyValue,
+                    row: cleanRow
+                });
+                latestPayload = response.payload;
+            }
+
+            applyTablePayload(latestPayload);
+            renderTable();
+            updateCellCursor();
+            status.textContent = `Updated ${rowSnapshots.length} rows for ${columnName}`;
+        }
+
+        async function calculatedUpdateScopeChoice() {
+            return showChoiceDialog({
+                title: 'Update Calculated Field',
+                message: 'Do you want to update the whole table now, or only apply this calculation to new rows and future edits? Updating the whole table could take time depending on calculation complexity and the number of rows.',
+                choices: [
+                    { value: 'future', label: 'Only New Rows and Edits' },
+                    { value: 'all', label: 'Update Whole Table', primary: true },
+                    { value: '', label: 'Cancel' }
+                ]
+            });
+        }
+
+        async function saveDefaultValue(columnName, expressionResult) {
+            if (!expressionResult) {
+                return;
+            }
+            const response = await postSchemaAction({
+                action: 'setDefaultValue',
+                table: tableName,
+                column: columnName,
+                expression: expressionResult.expression,
+                javascript: expressionResult.javascript,
+                interpretNatural: Boolean(expressionResult.interpretNatural)
+            });
+            applyTablePayload(response.payload);
+        }
+
+        async function openDefaultValueBuilder() {
+            const column = columnByName(activeColumnName);
+            if (!column || column.accessType === 'Calculated Field' || column.calculatedJavascript) {
+                return;
+            }
+
+            const result = await window.ExpressionBuilder?.open?.({
+                tableName,
+                fieldName: column.name,
+                purpose: 'default',
+                expression: column.defaultExpression || '',
+                javascript: column.defaultJavascript || '',
+                interpretNatural: Boolean(column.defaultInterpretNatural),
+                columns: []
+            });
+            await saveDefaultValue(column.name, result);
+            renderTable();
+            updateCellCursor();
+            status.textContent = result ? `Default value saved for ${column.name}` : status.textContent;
+        }
+
+        async function openCalculatedExpressionBuilder() {
+            const column = columnByName(activeColumnName);
+            if (!column || (column.accessType !== 'Calculated Field' && !column.calculatedJavascript)) {
+                return;
+            }
+
+            const result = await window.ExpressionBuilder?.open?.({
+                tableName,
+                fieldName: column.name,
+                purpose: 'calculated',
+                expression: column.calculatedExpression || '',
+                javascript: column.calculatedJavascript || '',
+                interpretNatural: Boolean(column.calculatedInterpretNatural),
+                blockedFieldNames: [column.name],
+                columns: tableDef.structure.columns
+                    .filter(field => field.name !== column.name)
+                    .map(field => ({
+                        name: field.name,
+                        label: field.label || field.name,
+                        type: field.type,
+                        mysqlType: field.mysqlType
+                    }))
+            });
+            if (!result) {
+                return;
+            }
+
+            const updateScope = await calculatedUpdateScopeChoice();
+            if (!updateScope) {
+                return;
+            }
+
+            try {
+                await saveCalculatedField(column.name, result, { updateExistingRows: updateScope === 'all' });
+                renderTable();
+                updateCellCursor();
+                if (updateScope !== 'all') {
+                    status.textContent = `Expression saved for ${column.name}`;
+                }
+            } catch (error) {
+                await showMessageDialog({
+                    title: 'Calculated Field Update Error',
+                    message: error.message,
+                    confirmText: 'OK'
+                });
+                renderTable();
+                updateCellCursor();
+            }
+        }
+
+        async function addColumnFromType(type = '', options = {}) {
+            const normalizedType = addableAccessType(type);
+            const fixedType = Boolean(normalizedType);
+            const afterColumn = columnByName(cursorColumnName)?.name || columnByName(activeColumnName)?.name || '';
+            const result = await showColumnDialog({
+                title: 'Add Field',
+                label: 'Field name',
+                value: generatedFieldName(tableDef.structure.columns),
+                confirmText: 'Add',
+                includeType: true,
+                typeValue: normalizedType || 'Short Text',
+                onSubmit: async ({ name, type: dialogType, friendlyName, comment }) => {
+                    const selectedType = fixedType ? normalizedType : dialogType;
+                    status.textContent = 'Adding field...';
+                    const response = await postSchemaAction({
+                        action: 'addColumn',
+                        table: tableName,
+                        name,
+                        type: selectedType,
+                        friendlyName,
+                        comment,
+                        afterColumn
+                    });
+                    return { name, type: selectedType, friendlyName, comment, afterColumn, response };
+                }
+            });
+
+            if (!result) {
+                return null;
+            }
+
+            applyTablePayload(result.response?.payload);
+            rememberInsertedColumnPosition(result.name, result.afterColumn);
+            activeColumnName = result.name;
+            cursorColumnName = result.name;
+            status.textContent = `Added ${result.name}`;
+
+            if (result.type === 'Calculated Field') {
+                renderTable();
+                updateCellCursor();
+                const expressionResult = await window.ExpressionBuilder?.open?.({
+                    tableName,
+                    fieldName: result.name,
+                    expression: '',
+                    javascript: '',
+                    purpose: 'calculated',
+                    interpretNatural: false,
+                    blockedFieldNames: [result.name],
+                    columns: tableDef.structure.columns
+                        .filter(field => field.name !== result.name)
+                        .map(field => ({
+                            name: field.name,
+                            label: field.label || field.name,
+                            type: field.type,
+                            mysqlType: field.mysqlType
+                        }))
+                });
+                await saveCalculatedField(result.name, expressionResult);
+            }
+
+            renderTable();
+            updateCellCursor();
+            return result;
+        }
+
+        async function deleteActiveColumn() {
+            const column = columnByName(activeColumnName);
+            if (!column) {
+                return;
+            }
+            if (column.primaryKey) {
+                await showMessageDialog({
+                    title: 'Delete Field',
+                    message: 'Primary key fields cannot be deleted.',
+                    confirmText: 'OK'
+                });
+                return;
+            }
+
+            const confirmed = await showConfirmDialog({
+                title: 'Delete Field',
+                message: `Delete the field "${column.name}" from ${tableName}? This cannot be undone.`,
+                confirmText: 'Delete'
+            });
+            if (!confirmed) {
+                return;
+            }
+
+            const response = await postSchemaAction({
+                action: 'deleteColumn',
+                table: tableName,
+                column: column.name
+            });
+            applyTablePayload(response.payload);
+            activeColumnName = tableDef.structure.columns[0]?.name || '';
+            cursorColumnName = activeColumnName;
+            renderTable();
+            updateCellCursor();
+            status.textContent = `Deleted ${column.name}`;
         }
 
         async function toggleColumnValidation(property) {
@@ -508,7 +864,7 @@ function initTableViews(db) {
             }
         }
 
-        async function setValidationRule(rule, javascript = '') {
+        async function setValidationRule(rule, javascript = '', interpretNatural = false) {
             const column = columnByName(activeColumnName);
             if (!column) {
                 return;
@@ -521,7 +877,8 @@ function initTableViews(db) {
                     table: tableName,
                     column: column.name,
                     rule,
-                    javascript
+                    javascript,
+                    interpretNatural
                 });
 
                 if (response.payload?.structure) {
@@ -553,10 +910,10 @@ function initTableViews(db) {
                 return;
             }
 
-            if (column.primaryKey) {
+            if (hasProtectedFieldSettings(column)) {
                 await showMessageDialog({
                     title: 'Data Type',
-                    message: 'Primary key fields are read only for data type changes.',
+                    message: 'This field type is read only for data type changes.',
                     confirmText: 'OK'
                 });
                 updateFieldsRibbonState(column);
@@ -608,6 +965,10 @@ function initTableViews(db) {
             if (!column) {
                 return;
             }
+            if (hasProtectedFieldSettings(column)) {
+                updateFieldsRibbonState(column);
+                return;
+            }
 
             const accessType = column.accessType || column.type;
             let nextFormat = options.format || column.accessFormat || defaultFieldFormats[accessType] || '';
@@ -657,6 +1018,10 @@ function initTableViews(db) {
         window.accessActiveTableController = {
             tableName,
             openColumnDialog: () => openColumnDialog(activeColumnName),
+            addColumnFromType,
+            deleteActiveColumn,
+            openDefaultValueBuilder,
+            openCalculatedExpressionBuilder,
             setActiveColumn,
             toggleColumnValidation,
             changeColumnType,
@@ -667,8 +1032,10 @@ function initTableViews(db) {
                 return {
                     tableName,
                     fieldName: column.name || activeColumnName || '',
+                    purpose: 'validation',
                     expression: column.validationRule || (column.name ? `[${column.name}]` : ''),
                     javascript: column.validationJavascript || '',
+                    interpretNatural: Boolean(column.validationInterpretNatural),
                     columns: tableDef.structure.columns.map(field => ({
                         name: field.name,
                         label: field.label || field.name,
@@ -679,7 +1046,7 @@ function initTableViews(db) {
             }
         };
         enableEditableCells(host, rows, {
-            columns: tableDef.structure.columns,
+            columns: () => tableDef.structure.columns,
             getInsertValue(column) {
                 return insertDraft[column] ?? '';
             },
@@ -705,6 +1072,7 @@ function initTableViews(db) {
             onRowEdit(rowIndex, column, value) {
                 markDirtyRow(rowIndex);
                 rows[rowIndex][column] = value;
+                recalculateRow(rows[rowIndex]);
                 renderTable();
                 updateCellCursor();
             },
@@ -729,8 +1097,11 @@ function initTableViews(db) {
             try {
                 const newRow = {};
                 tableDef.structure.columns.forEach(column => {
-                    newRow[column.name] = normalizeCellValue(insertDraft[column.name] ?? '', column.type);
+                    const draftValue = insertDraft[column.name] ?? '';
+                    const nextValue = draftValue === '' ? defaultValueForColumn(column) : draftValue;
+                    newRow[column.name] = normalizeCellValue(nextValue, column.type);
                 });
+                recalculateRow(newRow);
 
                 status.textContent = 'Inserting record...';
                 const response = await postRecordAction({
@@ -839,30 +1210,7 @@ function initTableViews(db) {
 
             if (addColumnTarget) {
                 event.preventDefault();
-                const result = await showColumnDialog({
-                    title: 'Add Field',
-                    label: 'Field name',
-                    value: generatedFieldName(tableDef.structure.columns),
-                    confirmText: 'Add',
-                    includeType: true,
-                    onSubmit: async ({ name, type, friendlyName, comment }) => {
-                        status.textContent = 'Adding field...';
-                        await postSchemaAction({
-                            action: 'addColumn',
-                            table: tableName,
-                            name,
-                            type,
-                            friendlyName,
-                            comment
-                        });
-                        return { name, type, friendlyName, comment };
-                    }
-                });
-
-                if (result) {
-                    status.textContent = `Added ${result.name}`;
-                    await loadView(currentView, { replaceActive: true });
-                }
+                await addColumnFromType();
                 return;
             }
 

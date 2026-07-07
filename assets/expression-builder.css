@@ -26,6 +26,7 @@
     background: #eaf1f7;
     padding-left: 8px;
     font-size: 16px;
+    cursor: move;
 }
 
 .expression-builder-title button {
@@ -35,6 +36,7 @@
     place-items: center;
     border: 0;
     background: transparent;
+    cursor: default;
 }
 
 .expression-builder-title button:hover {
@@ -72,6 +74,25 @@
 
 .expression-builder-main textarea:focus {
     border-color: #0078d7;
+}
+
+.expression-options-row {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    margin: 6px 0 4px;
+    font-size: 13px;
+}
+
+.expression-option {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.expression-option input {
+    width: 14px;
+    height: 14px;
 }
 
 .expression-builder-preview {

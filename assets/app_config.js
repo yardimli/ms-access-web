@@ -134,7 +134,13 @@ const moreFieldsGroups = [
     ['Quick Start', [
         ['quick-start', 'Address'],
         ['quick-start', 'Category'],
-        ['quick-start', 'Name']
+        ['quick-start', 'Name'],
+        ['quick-start', 'Payment Type'],
+        ['quick-start', 'Phone'],
+        ['quick-start', 'Priority'],
+        ['quick-start', 'Start and End Dates'],
+        ['quick-start', 'Status'],
+        ['quick-start', 'Tag']
     ]]
 ];
 

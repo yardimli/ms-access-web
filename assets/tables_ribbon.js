@@ -170,17 +170,40 @@ function updateFieldsRibbonState(column = window.accessActiveTableColumn) {
     const formatRow = ribbon.querySelector('[data-field-format-row]');
     const formatSelect = ribbon.querySelector('[data-field-format]');
     const formatButtons = ribbon.querySelectorAll('[data-format-command]');
+    const defaultButton = ribbon.querySelector('[data-command="default"]');
+    const expressionButton = ribbon.querySelector('[data-command="expression"]');
+    const isCalculated = accessTypeForColumn(activeColumn) === 'Calculated Field' || Boolean(activeColumn?.calculatedJavascript);
+    const isLookup = Boolean(activeColumn?.lookup);
+    const protectedFieldSettings = Boolean(activeColumn?.primaryKey || isCalculated || isLookup);
+
+    if (defaultButton) {
+        defaultButton.classList.toggle('disabled', !activeColumn || isCalculated);
+        if (!activeColumn || isCalculated) {
+            defaultButton.setAttribute('disabled', 'disabled');
+        } else {
+            defaultButton.removeAttribute('disabled');
+        }
+    }
+
+    if (expressionButton) {
+        expressionButton.classList.toggle('disabled', !activeColumn || !isCalculated);
+        if (!activeColumn || !isCalculated) {
+            expressionButton.setAttribute('disabled', 'disabled');
+        } else {
+            expressionButton.removeAttribute('disabled');
+        }
+    }
 
     if (typeSelect && activeColumn) {
         const accessType = accessTypeForColumn(activeColumn);
         typeSelect.value = tableDataTypes.includes(accessType) ? accessType : 'Short Text';
-        typeSelect.disabled = Boolean(activeColumn.primaryKey || accessType === 'Attachment');
+        typeSelect.disabled = Boolean(protectedFieldSettings || accessType === 'Attachment');
     }
 
     if (formatRow && formatSelect) {
         const accessType = accessTypeForColumn(activeColumn);
         const options = fieldFormatOptions[accessType] || [];
-        const enabled = options.length > 0;
+        const enabled = options.length > 0 && !protectedFieldSettings;
         formatRow.classList.toggle('disabled', !enabled);
         formatSelect.disabled = !enabled;
         formatSelect.innerHTML = enabled
@@ -193,7 +216,8 @@ function updateFieldsRibbonState(column = window.accessActiveTableColumn) {
             const command = button.dataset.formatCommand;
             const isDecimal = command === 'decimal-less' || command === 'decimal-more';
             const buttonEnabled = ['Number', 'Large Number', 'Currency'].includes(accessType)
-                && (!isDecimal || accessType !== 'Yes/No');
+                && (!isDecimal || accessType !== 'Yes/No')
+                && !protectedFieldSettings;
             button.disabled = !buttonEnabled;
             button.classList.toggle('disabled', !buttonEnabled);
         });

@@ -44,6 +44,7 @@ function allowed_access_column_types(): array
     return [
         'Short Text',
         'Long Text',
+        'Rich Text',
         'Number',
         'Large Number',
         'Date/Time',
@@ -53,16 +54,57 @@ function allowed_access_column_types(): array
         'OLE Object',
         'Hyperlink',
         'Attachment',
+        'Lookup & Relationship',
+        'Calculated Field',
+        'Address',
+        'Category',
+        'Name',
+        'Payment Type',
+        'Phone',
+        'Priority',
+        'Start and End Dates',
+        'Status',
+        'Tag',
     ];
 }
 
 function validate_access_column_type(string $type): string
 {
     $type = trim($type);
+    if ($type === 'Date & Time') {
+        $type = 'Date/Time';
+    }
     if (!in_array($type, allowed_access_column_types(), true)) {
         throw new RuntimeException('Unsupported Access data type.');
     }
     return $type;
+}
+
+function quick_start_definition(string $type): array
+{
+    return match ($type) {
+        'Address' => ['accessType' => 'Short Text', 'mysqlType' => 'VARCHAR(255)', 'friendlyName' => 'Address'],
+        'Category' => ['accessType' => 'Short Text', 'mysqlType' => 'VARCHAR(255)', 'friendlyName' => 'Category', 'lookup' => [
+            'mode' => 'single', 'valueType' => 'string', 'source' => ['Hardware', 'Software', 'Service', 'Other']
+        ]],
+        'Name' => ['accessType' => 'Short Text', 'mysqlType' => 'VARCHAR(255)', 'friendlyName' => 'Name'],
+        'Payment Type' => ['accessType' => 'Short Text', 'mysqlType' => 'VARCHAR(255)', 'friendlyName' => 'Payment Type', 'lookup' => [
+            'mode' => 'single', 'valueType' => 'integer', 'source' => [['key' => 1, 'value' => 'Cash'], ['key' => 2, 'value' => 'Credit Card'], ['key' => 3, 'value' => 'Wire Transfer']]
+        ]],
+        'Phone' => ['accessType' => 'Short Text', 'mysqlType' => 'VARCHAR(40)', 'friendlyName' => 'Phone'],
+        'Priority' => ['accessType' => 'Number', 'mysqlType' => 'INT', 'friendlyName' => 'Priority', 'lookup' => [
+            'mode' => 'single', 'valueType' => 'integer', 'source' => [['key' => 1, 'value' => 'Low'], ['key' => 2, 'value' => 'Normal'], ['key' => 3, 'value' => 'High']]
+        ]],
+        'Start and End Dates' => ['accessType' => 'Short Text', 'mysqlType' => 'VARCHAR(255)', 'friendlyName' => 'Start and End Dates'],
+        'Status' => ['accessType' => 'Short Text', 'mysqlType' => 'VARCHAR(80)', 'friendlyName' => 'Status', 'lookup' => [
+            'mode' => 'single', 'valueType' => 'string', 'source' => ['New', 'In Progress', 'Blocked', 'Done']
+        ]],
+        'Tag' => ['accessType' => 'Long Text', 'mysqlType' => 'TEXT', 'friendlyName' => 'Tag', 'lookup' => [
+            'mode' => 'multiple', 'valueType' => 'string', 'source' => ['Important', 'Follow Up', 'Internal', 'External']
+        ]],
+        'Calculated Field' => ['accessType' => 'Calculated Field', 'mysqlType' => 'VARCHAR(255)', 'friendlyName' => 'Calculated Field'],
+        default => ['accessType' => $type, 'mysqlType' => mysql_column_type_for_access_type($type), 'friendlyName' => ''],
+    };
 }
 
 function allowed_access_formats_for_type(string $type): array
@@ -277,17 +319,121 @@ try {
         $type = validate_access_column_type((string) ($request['type'] ?? 'Short Text'));
         $friendlyName = trim((string) ($request['friendlyName'] ?? ''));
         $comment = trim((string) ($request['comment'] ?? ''));
+        $afterColumn = trim((string) ($request['afterColumn'] ?? ''));
+        $quickDefinition = quick_start_definition($type);
+        $storageAccessType = (string) ($quickDefinition['accessType'] ?? $type);
+        $storageMysqlType = (string) ($quickDefinition['mysqlType'] ?? mysql_column_type_for_access_type($storageAccessType));
+        if ($friendlyName === '') {
+            $friendlyName = (string) ($quickDefinition['friendlyName'] ?? '');
+        }
 
         if (column_exists($db, $resolvedTable, $fieldName)) {
             throw new RuntimeException('A field with that name already exists.');
         }
+        $afterClause = '';
+        if ($afterColumn !== '') {
+            $afterColumn = validate_field_name($afterColumn);
+            if (!column_exists($db, $resolvedTable, $afterColumn)) {
+                throw new RuntimeException('The selected insertion field was not found.');
+            }
+            $afterClause = ' AFTER ' . db_identifier($afterColumn);
+        }
 
         $db->query(
             'ALTER TABLE ' . db_identifier($resolvedTable) .
-            ' ADD COLUMN ' . db_identifier($fieldName) . ' ' . mysql_type_for_access_type($type) .
-            ($comment !== '' ? " COMMENT '" . addslashes($comment) . "'" : '')
+            ' ADD COLUMN ' . db_identifier($fieldName) . ' ' . $storageMysqlType . ' NULL' .
+            ($comment !== '' ? " COMMENT '" . addslashes($comment) . "'" : '') .
+            $afterClause
         );
-        update_column_metadata($db, $resolvedTable, $fieldName, $friendlyName, $type, mysql_column_type_for_access_type($type));
+        update_column_metadata($db, $resolvedTable, $fieldName, $friendlyName, $storageAccessType, $storageMysqlType);
+        if (isset($quickDefinition['lookup'])) {
+            $metadata = fetch_table_metadata($db, $resolvedTable);
+            $metadata['columns'][$fieldName]['lookup'] = $quickDefinition['lookup'];
+            save_table_metadata($db, $resolvedTable, $metadata);
+        }
+
+        json_response([
+            'ok' => true,
+            'table' => $resolvedTable,
+            'payload' => fetch_table_payload($db, $resolvedTable, true),
+        ]);
+        exit;
+    }
+
+    if ($action === 'deleteColumn') {
+        $columnName = validate_field_name((string) ($request['column'] ?? ''));
+        if (!column_exists($db, $resolvedTable, $columnName)) {
+            throw new RuntimeException('Field was not found.');
+        }
+        if (fetch_column_key($db, $resolvedTable, $columnName) === 'PRI') {
+            throw new RuntimeException('Primary key fields cannot be deleted.');
+        }
+
+        $db->query('ALTER TABLE ' . db_identifier($resolvedTable) . ' DROP COLUMN ' . db_identifier($columnName));
+        $metadata = fetch_table_metadata($db, $resolvedTable);
+        unset($metadata['columns'][$columnName]);
+        save_table_metadata($db, $resolvedTable, $metadata);
+
+        json_response([
+            'ok' => true,
+            'table' => $resolvedTable,
+            'payload' => fetch_table_payload($db, $resolvedTable, true),
+        ]);
+        exit;
+    }
+
+    if ($action === 'setCalculatedField') {
+        $columnName = validate_field_name((string) ($request['column'] ?? ''));
+        $expression = trim((string) ($request['expression'] ?? ''));
+        $javascript = trim((string) ($request['javascript'] ?? ''));
+        $interpretNatural = filter_var($request['interpretNatural'] ?? false, FILTER_VALIDATE_BOOL);
+
+        if (!column_exists($db, $resolvedTable, $columnName)) {
+            throw new RuntimeException('Field was not found.');
+        }
+
+        $metadata = fetch_table_metadata($db, $resolvedTable);
+        $metadata['columns'] ??= [];
+        $metadata['columns'][$columnName] ??= [];
+        $metadata['columns'][$columnName]['accessType'] = 'Calculated Field';
+        $metadata['columns'][$columnName]['calculatedExpression'] = $expression;
+        $metadata['columns'][$columnName]['calculatedJavascript'] = $javascript;
+        $metadata['columns'][$columnName]['calculatedInterpretNatural'] = $interpretNatural;
+        save_table_metadata($db, $resolvedTable, $metadata);
+
+        json_response([
+            'ok' => true,
+            'table' => $resolvedTable,
+            'payload' => fetch_table_payload($db, $resolvedTable, true),
+        ]);
+        exit;
+    }
+
+    if ($action === 'setDefaultValue') {
+        $columnName = validate_field_name((string) ($request['column'] ?? ''));
+        $expression = trim((string) ($request['expression'] ?? ''));
+        $javascript = trim((string) ($request['javascript'] ?? ''));
+        $interpretNatural = filter_var($request['interpretNatural'] ?? false, FILTER_VALIDATE_BOOL);
+
+        if (!column_exists($db, $resolvedTable, $columnName)) {
+            throw new RuntimeException('Field was not found.');
+        }
+
+        $metadata = fetch_table_metadata($db, $resolvedTable);
+        $metadata['columns'] ??= [];
+        $metadata['columns'][$columnName] ??= [];
+        if ($expression === '') {
+            unset(
+                $metadata['columns'][$columnName]['defaultExpression'],
+                $metadata['columns'][$columnName]['defaultJavascript'],
+                $metadata['columns'][$columnName]['defaultInterpretNatural']
+            );
+        } else {
+            $metadata['columns'][$columnName]['defaultExpression'] = $expression;
+            $metadata['columns'][$columnName]['defaultJavascript'] = $javascript;
+            $metadata['columns'][$columnName]['defaultInterpretNatural'] = $interpretNatural;
+        }
+        save_table_metadata($db, $resolvedTable, $metadata);
 
         json_response([
             'ok' => true,
@@ -411,6 +557,7 @@ try {
         $columnName = validate_field_name((string) ($request['column'] ?? ''));
         $rule = trim((string) ($request['rule'] ?? ''));
         $javascript = trim((string) ($request['javascript'] ?? ''));
+        $interpretNatural = filter_var($request['interpretNatural'] ?? false, FILTER_VALIDATE_BOOL);
 
         if (!column_exists($db, $resolvedTable, $columnName)) {
             throw new RuntimeException('Field was not found.');
@@ -420,10 +567,15 @@ try {
         $metadata['columns'] ??= [];
         $metadata['columns'][$columnName] ??= [];
         if ($rule === '') {
-            unset($metadata['columns'][$columnName]['validationRule'], $metadata['columns'][$columnName]['validationJavascript']);
+            unset(
+                $metadata['columns'][$columnName]['validationRule'],
+                $metadata['columns'][$columnName]['validationJavascript'],
+                $metadata['columns'][$columnName]['validationInterpretNatural']
+            );
         } else {
             $metadata['columns'][$columnName]['validationRule'] = $rule;
             $metadata['columns'][$columnName]['validationJavascript'] = $javascript;
+            $metadata['columns'][$columnName]['validationInterpretNatural'] = $interpretNatural;
         }
         save_table_metadata($db, $resolvedTable, $metadata);
 

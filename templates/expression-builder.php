@@ -7,9 +7,19 @@
             </div>
             <div class="expression-builder-body">
                 <div class="expression-builder-main">
-                    <p>Enter an Expression to <a href="#" data-expression-help>validate</a> the data in this field:</p>
-                    <p>(Examples of expressions include [field1] + [field2] and [field1] &lt; 5)</p>
+                    <p data-expression-prompt>Enter an Expression to <a href="#" data-expression-help>validate</a> the data in this field:</p>
+                    <p data-expression-example>(Examples of expressions include [field1] + [field2] and [field1] &lt; 5)</p>
                     <textarea data-expression-input spellcheck="false"></textarea>
+                    <div class="expression-options-row">
+                        <label class="expression-option">
+                            <input type="checkbox" data-expression-natural>
+                            <span>Interpret natural writing</span>
+                        </label>
+                        <label class="expression-option">
+                            <input type="checkbox" data-expression-toggle-js>
+                            <span>JavaScript</span>
+                        </label>
+                    </div>
                     <div class="expression-builder-preview" data-expression-preview>
                         <div><strong>JavaScript:</strong> <code data-expression-js></code></div>
                         <div><strong>Result:</strong> <span data-expression-result></span></div>
@@ -25,7 +35,6 @@
                     <button class="primary" type="submit">OK</button>
                     <button type="button" data-expression-cancel>Cancel</button>
                     <button type="button" data-expression-help-button>Help</button>
-                    <button type="button" data-expression-toggle-js>JavaScript</button>
                     <button type="button" data-expression-less>&lt;&lt; Less</button>
                 </div>
                 <p class="expression-builder-error" data-expression-error hidden></p>

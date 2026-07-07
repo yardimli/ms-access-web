@@ -217,6 +217,24 @@
     color: #aaa;
 }
 
+.lookup-checkbox-editor {
+    max-height: 150px;
+    min-width: 160px;
+    overflow: auto;
+    border: 1px solid #7f9db9;
+    background: #fff;
+    box-shadow: 1px 2px 5px rgba(0,0,0,.18);
+    padding: 4px;
+}
+
+.lookup-checkbox-editor label {
+    display: flex;
+    min-height: 22px;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+}
+
 .decimal-button {
     width: 28px;
 }
