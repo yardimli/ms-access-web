@@ -1,6 +1,7 @@
 const tableDataTypes = [
     'Short Text',
     'Long Text',
+    'HTML Text',
     'Number',
     'Large Number',
     'Date/Time',
@@ -32,6 +33,10 @@ const defaultFieldFormats = {
 
 function accessTypeForColumn(column) {
     return column?.accessType || column?.type || 'Short Text';
+}
+
+function isMemoColumn(column) {
+    return ['Long Text', 'HTML Text', 'Rich Text'].includes(accessTypeForColumn(column));
 }
 
 function fieldFormatForColumn(column) {
@@ -172,6 +177,7 @@ function updateFieldsRibbonState(column = window.accessActiveTableColumn) {
     const formatButtons = ribbon.querySelectorAll('[data-format-command]');
     const defaultButton = ribbon.querySelector('[data-command="default"]');
     const expressionButton = ribbon.querySelector('[data-command="expression"]');
+    const memoButton = ribbon.querySelector('[data-command="memo"]');
     const isCalculated = accessTypeForColumn(activeColumn) === 'Calculated Field' || Boolean(activeColumn?.calculatedJavascript);
     const isLookup = Boolean(activeColumn?.lookup);
     const protectedFieldSettings = Boolean(activeColumn?.primaryKey || isCalculated || isLookup);
@@ -191,6 +197,16 @@ function updateFieldsRibbonState(column = window.accessActiveTableColumn) {
             expressionButton.setAttribute('disabled', 'disabled');
         } else {
             expressionButton.removeAttribute('disabled');
+        }
+    }
+
+    if (memoButton) {
+        const enabled = Boolean(activeColumn && isMemoColumn(activeColumn));
+        memoButton.classList.toggle('disabled', !enabled);
+        if (enabled) {
+            memoButton.removeAttribute('disabled');
+        } else {
+            memoButton.setAttribute('disabled', 'disabled');
         }
     }
 

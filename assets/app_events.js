@@ -102,6 +102,12 @@ document.addEventListener('click', async event => {
         return;
     }
 
+    const memoButton = event.target.closest('[data-command="memo"]');
+    if (memoButton && isTableDatasheetView(currentView) && !memoButton.disabled) {
+        openMemoMenu(memoButton);
+        return;
+    }
+
     const addDeleteCommand = event.target.closest('[data-command="text-field"], [data-command="number"], [data-command="currency"], [data-command="date"], [data-command="yes-no"], [data-command="delete"]');
     if (addDeleteCommand && isTableDatasheetView(currentView) && addDeleteCommand.closest('.fields-add-delete')) {
         const commandType = {
@@ -155,6 +161,24 @@ document.addEventListener('click', async event => {
         closeMoreFieldsMenu();
     }
 
+    const memoMenuItem = event.target.closest('[data-memo-menu-item]');
+    if (memoMenuItem) {
+        const item = memoMenuItem.dataset.memoMenuItem;
+        closeMemoMenu();
+        if (item === 'appendOnly') {
+            await window.accessActiveTableController?.toggleMemoSetting?.('appendOnly');
+            return;
+        }
+        if (item === 'htmlText') {
+            await window.accessActiveTableController?.toggleMemoSetting?.('htmlText');
+            return;
+        }
+        if (item === 'history') {
+            await window.accessActiveTableController?.showColumnHistory?.();
+            return;
+        }
+    }
+
     const validationMenuItem = event.target.closest('[data-validation-menu-item]');
     if (validationMenuItem) {
         const item = validationMenuItem.dataset.validationMenuItem;
@@ -178,6 +202,10 @@ document.addEventListener('click', async event => {
 
     if (validationMenu && !event.target.closest('.validation-menu')) {
         closeValidationMenu();
+    }
+
+    if (memoMenu && !event.target.closest('.memo-menu')) {
+        closeMemoMenu();
     }
 
     const docClose = event.target.closest('.doc-close');
@@ -265,7 +293,7 @@ document.addEventListener('dblclick', event => {
 });
 
 function isTextEditTarget(target) {
-    return Boolean(target?.closest?.('input, textarea, select, .cell-edit-input'));
+    return Boolean(target?.closest?.('input, textarea, select, .cell-edit-input, [contenteditable="true"]'));
 }
 
 document.addEventListener('selectstart', event => {

@@ -31,7 +31,7 @@ function positionActiveCellEditor() {
     editor.style.left = `${rect.left}px`;
     editor.style.top = `${rect.top}px`;
     editor.style.width = `${rect.width}px`;
-    editor.style.height = activeCellEditor.lookupMode === 'multiple' ? 'auto' : `${rect.height}px`;
+    editor.style.height = activeCellEditor.lookupMode === 'multiple' || activeCellEditor.htmlMode ? 'auto' : `${rect.height}px`;
 }
 
 function normalizeCellValue(value, type) {
@@ -89,6 +89,9 @@ function lookupOptionLabel(option) {
 }
 
 function editorValue(activeEditor) {
+    if (activeEditor.htmlMode) {
+        return sanitizeHtmlText(activeEditor.input.innerHTML);
+    }
     if (activeEditor.lookupMode === 'multiple') {
         return Array.from(activeEditor.editor.querySelectorAll('input[type="checkbox"]:checked'))
             .map(input => input.value)
@@ -154,7 +157,7 @@ function closeActiveCellEditor(commit = true) {
 }
 
 function shouldKeepCellEditorOpen(target) {
-    return Boolean(target?.closest?.('.cell-edit-input, header, .create-menu, .more-fields-menu, [data-add-column], [data-add-column-button]'));
+    return Boolean(target?.closest?.('.cell-edit-input, .html-editor-toolbar, header, .create-menu, .more-fields-menu, [data-add-column], [data-add-column-button]'));
 }
 
 function enableEditableCells(container, rows, options = {}) {
@@ -191,8 +194,28 @@ function enableEditableCells(container, rows, options = {}) {
         const editor = document.createElement('div');
         let input = document.createElement('input');
 
-        editor.className = `cell-edit-control ${isDateColumn(type) ? 'date-editor' : ''}`;
-        if (columnDef.lookup?.mode === 'single') {
+        editor.className = `cell-edit-control ${isDateColumn(type) ? 'date-editor' : ''} ${isHtmlTextColumn(type) ? 'html-text-control' : ''}`;
+        if (isHtmlTextColumn(type)) {
+            input = document.createElement('div');
+            input.className = 'cell-edit-input html-text-editor';
+            input.contentEditable = 'true';
+            input.innerHTML = sanitizeHtmlText(isInsertRow || originalValue === '(New)' ? '' : originalValue);
+            const toolbar = document.createElement('div');
+            toolbar.className = 'html-editor-toolbar';
+            toolbar.innerHTML = `
+                <button type="button" data-html-command="bold" title="Bold"><i class="fas fa-bold"></i></button>
+                <button type="button" data-html-command="italic" title="Italic"><i class="fas fa-italic"></i></button>
+                <button type="button" data-html-command="underline" title="Underline"><i class="fas fa-underline"></i></button>
+            `;
+            toolbar.addEventListener('mousedown', toolbarEvent => toolbarEvent.preventDefault());
+            toolbar.addEventListener('click', toolbarEvent => {
+                const button = toolbarEvent.target.closest('[data-html-command]');
+                if (!button) return;
+                document.execCommand(button.dataset.htmlCommand, false, null);
+                input.focus();
+            });
+            editor.appendChild(toolbar);
+        } else if (columnDef.lookup?.mode === 'single') {
             input = document.createElement('select');
             input.className = 'cell-edit-input';
             const current = isInsertRow || originalValue === '(New)' ? '' : String(originalValue ?? '');
@@ -242,6 +265,7 @@ function enableEditableCells(container, rows, options = {}) {
             onRowEdit: options.onRowEdit,
             onCancelRowEdit: options.onCancelRowEdit,
             onClose: options.onClose,
+            htmlMode: isHtmlTextColumn(type),
             lookupMode: columnDef.lookup?.mode || ''
         };
         positionActiveCellEditor();
@@ -251,6 +275,9 @@ function enableEditableCells(container, rows, options = {}) {
 
         input.addEventListener('keydown', async keyEvent => {
             if (keyEvent.key === 'Enter') {
+                if (isHtmlTextColumn(type) && !keyEvent.ctrlKey && !keyEvent.metaKey) {
+                    return;
+                }
                 keyEvent.preventDefault();
                 closeActiveCellEditor(true);
             }

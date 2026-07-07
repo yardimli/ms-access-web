@@ -129,6 +129,7 @@ function ribbonIcon(name) {
         'yes-no': 'fas fa-check-square',
         'more-fields': 'fas fa-list',
         'rich-text': 'fas fa-italic',
+        history: 'fas fa-history',
         attachment: 'fas fa-paperclip',
         hyperlink: 'fas fa-globe',
         'long-text': 'fas fa-font',
@@ -212,6 +213,12 @@ function closeValidationMenu() {
     document.querySelector('[data-command="validation"]')?.classList.remove('active');
 }
 
+function closeMemoMenu() {
+    memoMenu?.remove();
+    memoMenu = null;
+    document.querySelector('[data-command="memo"]')?.classList.remove('active');
+}
+
 function closeCreateMenu() {
     createMenu?.remove();
     createMenu = null;
@@ -272,6 +279,34 @@ function buildValidationMenu() {
     `;
 }
 
+function buildMemoMenu() {
+    const column = window.accessActiveTableColumn || {};
+    const isHtml = accessTypeForColumn(column) === 'HTML Text' || accessTypeForColumn(column) === 'Rich Text';
+    return `
+        <button class="validation-menu-item" type="button" data-memo-menu-item="appendOnly">
+            <span class="validation-menu-icon">${ribbonIcon('caption')}</span>
+            <span>
+                <strong>${column.appendOnly ? '✓ ' : ''}Append Only</strong>
+                <em>Track each edited value for this memo field.</em>
+            </span>
+        </button>
+        <button class="validation-menu-item" type="button" data-memo-menu-item="htmlText">
+            <span class="validation-menu-icon">${ribbonIcon('rich-text')}</span>
+            <span>
+                <strong>${isHtml ? '✓ ' : ''}HTML Text</strong>
+                <em>Render stored HTML as formatted text.</em>
+            </span>
+        </button>
+        <button class="validation-menu-item" type="button" data-memo-menu-item="history">
+            <span class="validation-menu-icon">${ribbonIcon('history')}</span>
+            <span>
+                <strong>Show Column History</strong>
+                <em>View append-only changes for the current row and field.</em>
+            </span>
+        </button>
+    `;
+}
+
 function openValidationMenu(button) {
     if (validationMenu) {
         closeValidationMenu();
@@ -293,6 +328,28 @@ function openValidationMenu(button) {
     button.classList.add('active');
 }
 
+function openMemoMenu(button) {
+    if (memoMenu) {
+        closeMemoMenu();
+        return;
+    }
+
+    closeMoreFieldsMenu();
+    closeValidationMenu();
+    closeCreateMenu();
+    const box = button.getBoundingClientRect();
+    memoMenu = document.createElement('div');
+    memoMenu.className = 'validation-menu memo-menu';
+    memoMenu.innerHTML = buildMemoMenu();
+    document.body.appendChild(memoMenu);
+
+    const menuWidth = memoMenu.offsetWidth;
+    const left = Math.min(box.left, window.innerWidth - menuWidth - 8);
+    memoMenu.style.left = `${Math.max(4, left)}px`;
+    memoMenu.style.top = `${box.bottom + 2}px`;
+    button.classList.add('active');
+}
+
 function openMoreFieldsMenu(button) {
     if (moreFieldsMenu && moreFieldsMenu.dataset.owner === 'more-fields') {
         closeMoreFieldsMenu();
@@ -301,6 +358,7 @@ function openMoreFieldsMenu(button) {
 
     closeMoreFieldsMenu();
     closeValidationMenu();
+    closeMemoMenu();
     const box = button.getBoundingClientRect();
     moreFieldsMenu = document.createElement('div');
     moreFieldsMenu.className = 'more-fields-menu';

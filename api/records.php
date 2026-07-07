@@ -102,6 +102,45 @@ function refresh_table_response(mysqli $db, string $tableName, ?array $row = nul
     ]);
 }
 
+function record_history_entry(mysqli $db, string $tableName, string $columnName, mixed $primaryKeyValue, mixed $value): void
+{
+    ensure_column_history_storage($db);
+    $stmt = $db->prepare(
+        'INSERT INTO access_column_history (table_name, column_name, primary_key_value, value_text)
+         VALUES (?, ?, ?, ?)'
+    );
+    $primaryKeyText = (string) $primaryKeyValue;
+    $valueText = $value === null ? '' : (string) $value;
+    $stmt->bind_param('ssss', $tableName, $columnName, $primaryKeyText, $valueText);
+    $stmt->execute();
+}
+
+function fetch_record_history(mysqli $db, string $tableName, string $columnName, mixed $primaryKeyValue): array
+{
+    ensure_column_history_storage($db);
+    $stmt = $db->prepare(
+        'SELECT value_text, changed_at
+         FROM access_column_history
+         WHERE table_name = ?
+           AND column_name = ?
+           AND primary_key_value = ?
+         ORDER BY changed_at, id'
+    );
+    $primaryKeyText = (string) $primaryKeyValue;
+    $stmt->bind_param('sss', $tableName, $columnName, $primaryKeyText);
+    $stmt->execute();
+
+    $history = [];
+    foreach ($stmt->get_result() as $row) {
+        $history[] = [
+            'value' => (string) ($row['value_text'] ?? ''),
+            'changedAt' => (string) ($row['changed_at'] ?? ''),
+        ];
+    }
+
+    return $history;
+}
+
 try {
     $db = db_connect();
     $request = record_request();
@@ -116,6 +155,38 @@ try {
     ensure_autonumber_primary_key($db, $resolvedTable, $primaryKey, $columns);
     $row = is_array($request['row'] ?? null) ? $request['row'] : [];
 
+    if ($action === 'history') {
+        if ($primaryKey === '') {
+            throw new RuntimeException('This table does not have a primary key for history lookup.');
+        }
+
+        $columnName = (string) ($request['column'] ?? '');
+        $primaryKeyValue = $request['primaryKeyValue'] ?? null;
+        if ($columnName === '' || $primaryKeyValue === null || $primaryKeyValue === '') {
+            throw new RuntimeException('Column name and primary key value are required.');
+        }
+
+        $columnExists = false;
+        foreach ($columns as $column) {
+            if (strcasecmp($column['name'], $columnName) === 0) {
+                $columnExists = true;
+                break;
+            }
+        }
+        if (!$columnExists) {
+            throw new RuntimeException('Field was not found.');
+        }
+
+        json_response([
+            'ok' => true,
+            'table' => $resolvedTable,
+            'column' => $columnName,
+            'primaryKeyValue' => (string) $primaryKeyValue,
+            'history' => fetch_record_history($db, $resolvedTable, $columnName, $primaryKeyValue),
+        ]);
+        exit;
+    }
+
     if ($action === 'update') {
         if ($primaryKey === '') {
             throw new RuntimeException('This table does not have a primary key for updates.');
@@ -126,7 +197,9 @@ try {
             throw new RuntimeException('Original primary key value was not supplied.');
         }
 
+        $previousRow = fetch_table_row_by_primary_key($db, $resolvedTable, $primaryKey, $primaryKeyValue) ?: [];
         $assignments = [];
+        $normalizedValues = [];
         foreach ($columns as $column) {
             $name = $column['name'];
             if ($name === $primaryKey && $column['type'] === 'AutoNumber') {
@@ -134,6 +207,7 @@ try {
             }
 
             $value = normalize_record_value($row[$name] ?? null, $column);
+            $normalizedValues[$name] = $value;
             $assignments[] = db_identifier($name) . ' = ' . sql_literal($db, $value);
         }
 
@@ -147,6 +221,18 @@ try {
             ' WHERE ' . db_identifier($primaryKey) . ' = ' . sql_literal($db, $primaryKeyValue) .
             ' LIMIT 1'
         );
+
+        foreach ($columns as $column) {
+            $name = $column['name'];
+            if (empty($column['appendOnly']) || !array_key_exists($name, $normalizedValues)) {
+                continue;
+            }
+            $previousValue = $previousRow[$name] ?? null;
+            $nextValue = $normalizedValues[$name];
+            if ((string) ($previousValue ?? '') !== (string) ($nextValue ?? '')) {
+                record_history_entry($db, $resolvedTable, $name, $primaryKeyValue, $nextValue);
+            }
+        }
 
         $updatedRow = fetch_table_row_by_primary_key($db, $resolvedTable, $primaryKey, $primaryKeyValue);
         refresh_table_response($db, $resolvedTable, $updatedRow);

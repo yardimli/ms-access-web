@@ -14,6 +14,29 @@ function coerceYesNo(value) {
     return value === true || value === 1 || value === '1' || String(value).toLowerCase() === 'true' || String(value).toLowerCase() === 'yes';
 }
 
+function isHtmlTextColumn(type) {
+    return type === 'HTML Text' || type === 'Rich Text';
+}
+
+function sanitizeHtmlText(value) {
+    const template = document.createElement('template');
+    template.innerHTML = String(value ?? '');
+    const allowedTags = new Set(['B', 'STRONG', 'I', 'EM', 'U', 'BR', 'P', 'DIV', 'SPAN', 'UL', 'OL', 'LI']);
+    const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_ELEMENT);
+    const nodes = [];
+    while (walker.nextNode()) {
+        nodes.push(walker.currentNode);
+    }
+    nodes.forEach(node => {
+        if (!allowedTags.has(node.tagName)) {
+            node.replaceWith(document.createTextNode(node.textContent || ''));
+            return;
+        }
+        [...node.attributes].forEach(attribute => node.removeAttribute(attribute.name));
+    });
+    return template.innerHTML;
+}
+
 function formatColumnValue(column, value) {
     if (value === null || value === undefined || value === '') return '';
     if (column.lookup?.source) {
@@ -68,6 +91,7 @@ function tableCellMarkup(column, value, options = {}) {
     const classes = [];
     if (isNumericColumn(column.type)) classes.push('numeric-cell');
     if (isYesNoColumn(column.type)) classes.push('yes-no-cell');
+    if (isHtmlTextColumn(column.type)) classes.push('html-text-cell');
     if (options.placeholder) classes.push('new-record-cell');
 
     const attrs = [
@@ -78,9 +102,12 @@ function tableCellMarkup(column, value, options = {}) {
     if (options.insert) attrs.push('data-insert-cell="true"');
 
     const displayValue = value === '(New)' ? '(New)' : formatColumnValue(column, value);
-    const content = isYesNoColumn(column.type) && value !== '(New)'
-        ? `<input type="checkbox" ${coerceYesNo(value) ? 'checked' : ''} disabled aria-label="${escapeHtml(column.label || column.name)}">`
-        : escapeHtml(displayValue);
+    let content = escapeHtml(displayValue);
+    if (isYesNoColumn(column.type) && value !== '(New)') {
+        content = `<input type="checkbox" ${coerceYesNo(value) ? 'checked' : ''} disabled aria-label="${escapeHtml(column.label || column.name)}">`;
+    } else if (isHtmlTextColumn(column.type) && value !== '(New)') {
+        content = sanitizeHtmlText(value);
+    }
 
     return `<td ${attrs.join(' ')}>${content}</td>`;
 }
@@ -173,7 +200,7 @@ const addColumnTypes = [
     'Date & Time',
     'Yes/No',
     'Lookup & Relationship',
-    'Rich Text',
+    'HTML Text',
     'Long Text',
     'Attachment',
     'Hyperlink',
@@ -433,6 +460,44 @@ function showChoiceDialog({ title, message, choices = [] }) {
         }, { once: true });
         dialog.showModal();
     });
+}
+
+function showColumnHistoryDialog({ tableName, columnName, history = [] }) {
+    const dialog = document.createElement('dialog');
+    dialog.className = 'access-dialog column-history-dialog';
+    const lines = history.length
+        ? history.map(item => {
+            const date = new Date(item.changedAt);
+            const label = Number.isNaN(date.getTime()) ? item.changedAt : date.toLocaleString();
+            return `[Version: ${escapeHtml(label)} ] ${escapeHtml(item.value)}`;
+        }).join('\n')
+        : 'No history has been recorded for this row and field.';
+
+    dialog.innerHTML = `
+        <form method="dialog">
+            <div class="access-dialog-title">
+                <span>History for ${escapeHtml(columnName)}</span>
+                <button type="button" data-dialog-close aria-label="Close"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="access-dialog-body">
+                <div class="history-meta">
+                    <p>History of changes for:</p>
+                    <p><span>Column name:</span> ${escapeHtml(columnName)}</p>
+                    <p><span>Table name:</span> ${escapeHtml(tableName)}</p>
+                </div>
+                <textarea class="history-list" readonly>${lines}</textarea>
+            </div>
+            <div class="dialog-actions">
+                <button class="primary" type="submit">OK</button>
+            </div>
+        </form>
+    `;
+    document.body.appendChild(dialog);
+    dialog.querySelectorAll('[data-dialog-close]').forEach(button => {
+        button.addEventListener('click', () => dialog.close(), { once: true });
+    });
+    dialog.addEventListener('close', () => dialog.remove(), { once: true });
+    dialog.showModal();
 }
 
 function nextSortDirection(current) {

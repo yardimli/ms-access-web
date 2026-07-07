@@ -92,12 +92,13 @@ let openTabs = [];
 let currentRibbon = 'home';
 let moreFieldsMenu = null;
 let validationMenu = null;
+let memoMenu = null;
 let createMenu = null;
 let statusModeOverride = null;
 
 const moreFieldsGroups = [
     ['Basic Types', [
-        ['rich-text', 'Rich Text'],
+        ['rich-text', 'HTML Text'],
         ['attachment', 'Attachment'],
         ['hyperlink', 'Hyperlink'],
         ['long-text', 'Long Text'],

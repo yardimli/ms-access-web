@@ -76,6 +76,21 @@ function ensure_table_metadata_storage(mysqli $db): void
     }
 }
 
+function ensure_column_history_storage(mysqli $db): void
+{
+    $db->query(
+        'CREATE TABLE IF NOT EXISTS access_column_history (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            table_name VARCHAR(128) NOT NULL,
+            column_name VARCHAR(128) NOT NULL,
+            primary_key_value VARCHAR(255) NOT NULL,
+            value_text LONGTEXT NULL,
+            changed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_access_column_history_lookup (table_name, column_name, primary_key_value, changed_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
+    );
+}
+
 function fetch_table_metadata(mysqli $db, string $tableName): array
 {
     ensure_table_metadata_storage($db);
@@ -132,7 +147,7 @@ function fetch_table_names(mysqli $db): array
 
     foreach ($result as $row) {
         $table = array_values($row)[0];
-        if ($table !== 'access_object_definitions') {
+        if (!in_array($table, ['access_object_definitions', 'access_column_history'], true)) {
             $tables[] = $table;
         }
     }
@@ -172,6 +187,7 @@ function fetch_table_columns(mysqli $db, string $tableName): array
             'accessFormat' => (string) ($columnMetadata[$row['column_name']]['accessFormat'] ?? default_access_format($accessType)),
             'decimalPlaces' => (int) ($columnMetadata[$row['column_name']]['decimalPlaces'] ?? 2),
             'lookup' => $columnMetadata[$row['column_name']]['lookup'] ?? null,
+            'appendOnly' => (bool) ($columnMetadata[$row['column_name']]['appendOnly'] ?? false),
             'defaultExpression' => (string) ($columnMetadata[$row['column_name']]['defaultExpression'] ?? ''),
             'defaultJavascript' => (string) ($columnMetadata[$row['column_name']]['defaultJavascript'] ?? ''),
             'defaultInterpretNatural' => (bool) ($columnMetadata[$row['column_name']]['defaultInterpretNatural'] ?? false),

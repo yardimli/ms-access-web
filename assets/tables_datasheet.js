@@ -1013,6 +1013,80 @@ function initTableViews(db) {
             }
         }
 
+        function activeRowForHistory() {
+            if (cursorRowIndex >= rows.length) {
+                return null;
+            }
+            return rows[cursorRowIndex] || null;
+        }
+
+        async function toggleMemoSetting(setting) {
+            const column = columnByName(activeColumnName);
+            if (!column || !['Long Text', 'HTML Text', 'Rich Text'].includes(column.accessType || column.type)) {
+                return;
+            }
+
+            const enabled = setting === 'appendOnly'
+                ? !Boolean(column.appendOnly)
+                : !['HTML Text', 'Rich Text'].includes(column.accessType || column.type);
+
+            try {
+                status.textContent = 'Updating Memo Settings...';
+                const response = await postSchemaAction({
+                    action: 'setMemoSetting',
+                    table: tableName,
+                    column: column.name,
+                    setting,
+                    enabled
+                });
+                applyTablePayload(response.payload);
+                renderTable();
+                updateCellCursor();
+                status.textContent = 'Memo Settings updated';
+            } catch (error) {
+                await showMessageDialog({
+                    title: 'Memo Settings Error',
+                    message: error.message,
+                    confirmText: 'OK'
+                });
+                updateFieldsRibbonState(columnByName(activeColumnName));
+            }
+        }
+
+        async function showColumnHistory() {
+            const column = columnByName(activeColumnName);
+            const row = activeRowForHistory();
+            const primaryKey = primaryKeyName();
+            if (!column || !row || !primaryKey) {
+                await showMessageDialog({
+                    title: 'Column History',
+                    message: 'Select an existing row to view column history.',
+                    confirmText: 'OK'
+                });
+                return;
+            }
+
+            try {
+                const response = await postRecordAction({
+                    action: 'history',
+                    table: tableName,
+                    column: column.name,
+                    primaryKeyValue: row[primaryKey]
+                });
+                showColumnHistoryDialog({
+                    tableName,
+                    columnName: column.name,
+                    history: response.history || []
+                });
+            } catch (error) {
+                await showMessageDialog({
+                    title: 'Column History Error',
+                    message: error.message,
+                    confirmText: 'OK'
+                });
+            }
+        }
+
         renderTable();
         updateCellCursor();
         window.accessActiveTableController = {
@@ -1022,6 +1096,8 @@ function initTableViews(db) {
             deleteActiveColumn,
             openDefaultValueBuilder,
             openCalculatedExpressionBuilder,
+            toggleMemoSetting,
+            showColumnHistory,
             setActiveColumn,
             toggleColumnValidation,
             changeColumnType,

@@ -28,7 +28,7 @@ function mysql_type_for_access_type(string $type): string
         'Currency' => 'DECIMAL(12,2) NULL DEFAULT 0',
         'Date/Time', 'Date & Time' => 'DATETIME NULL',
         'Yes/No' => 'TINYINT(1) NULL DEFAULT 0',
-        'Long Text', 'Rich Text' => 'TEXT NULL',
+        'Long Text', 'Rich Text', 'HTML Text' => 'TEXT NULL',
         'Attachment', 'Hyperlink', 'Lookup & Relationship', 'Calculated Field' => 'VARCHAR(255) NULL',
         default => 'VARCHAR(255) NULL',
     };
@@ -44,6 +44,7 @@ function allowed_access_column_types(): array
     return [
         'Short Text',
         'Long Text',
+        'HTML Text',
         'Rich Text',
         'Number',
         'Large Number',
@@ -577,6 +578,52 @@ try {
             $metadata['columns'][$columnName]['validationJavascript'] = $javascript;
             $metadata['columns'][$columnName]['validationInterpretNatural'] = $interpretNatural;
         }
+        save_table_metadata($db, $resolvedTable, $metadata);
+
+        json_response([
+            'ok' => true,
+            'table' => $resolvedTable,
+            'payload' => fetch_table_payload($db, $resolvedTable, true),
+        ]);
+        exit;
+    }
+
+    if ($action === 'setMemoSetting') {
+        $columnName = validate_field_name((string) ($request['column'] ?? ''));
+        $setting = (string) ($request['setting'] ?? '');
+        $enabled = filter_var($request['enabled'] ?? false, FILTER_VALIDATE_BOOL);
+
+        if (!column_exists($db, $resolvedTable, $columnName)) {
+            throw new RuntimeException('Field was not found.');
+        }
+
+        [$columns] = fetch_table_columns($db, $resolvedTable);
+        $column = null;
+        foreach ($columns as $candidate) {
+            if (strcasecmp($candidate['name'], $columnName) === 0) {
+                $column = $candidate;
+                break;
+            }
+        }
+
+        $accessType = (string) ($column['accessType'] ?? $column['type'] ?? '');
+        if (!in_array($accessType, ['Long Text', 'HTML Text', 'Rich Text'], true)) {
+            throw new RuntimeException('Memo Settings are only available for Long Text fields.');
+        }
+
+        $metadata = fetch_table_metadata($db, $resolvedTable);
+        $metadata['columns'] ??= [];
+        $metadata['columns'][$columnName] ??= [];
+
+        if ($setting === 'appendOnly') {
+            ensure_column_history_storage($db);
+            $metadata['columns'][$columnName]['appendOnly'] = $enabled;
+        } elseif ($setting === 'htmlText') {
+            $metadata['columns'][$columnName]['accessType'] = $enabled ? 'HTML Text' : 'Long Text';
+        } else {
+            throw new RuntimeException('Unsupported Memo Setting.');
+        }
+
         save_table_metadata($db, $resolvedTable, $metadata);
 
         json_response([
