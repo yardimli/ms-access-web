@@ -90,6 +90,12 @@ document.addEventListener('click', async event => {
         return;
     }
 
+    const lookupCommand = event.target.closest('[data-command="lookup"]');
+    if (lookupCommand && isTableDatasheetView(currentView) && !lookupCommand.disabled && !lookupCommand.closest('.fields-add-delete')) {
+        await window.accessActiveTableController?.modifyActiveLookup?.();
+        return;
+    }
+
     const validationToggle = event.target.closest('[data-command="required"], [data-command="unique"], [data-command="indexed"]');
     if (validationToggle && isTableDatasheetView(currentView)) {
         await window.accessActiveTableController?.toggleColumnValidation?.(validationToggle.dataset.command);

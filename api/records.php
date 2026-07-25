@@ -141,6 +141,50 @@ function fetch_record_history(mysqli $db, string $tableName, string $columnName,
     return $history;
 }
 
+function lookup_relationship_columns(array $columns): array
+{
+    return array_values(array_filter($columns, function (array $column): bool {
+        $lookup = $column['lookup'] ?? null;
+        return is_array($lookup)
+            && ($lookup['kind'] ?? 'static') === 'table'
+            && ($lookup['mode'] ?? 'single') === 'multiple'
+            && !empty($lookup['relationshipTable'])
+            && !empty($lookup['localKeyColumn'])
+            && !empty($lookup['remoteKeyColumn']);
+    }));
+}
+
+function sync_lookup_relationships(mysqli $db, array $columns, string $primaryKeyValue, array $row): void
+{
+    foreach (lookup_relationship_columns($columns) as $column) {
+        $lookup = $column['lookup'];
+        $relationshipTable = (string) $lookup['relationshipTable'];
+        if (!physical_table_exists($db, $relationshipTable)) {
+            continue;
+        }
+
+        $localColumn = (string) $lookup['localKeyColumn'];
+        $remoteColumn = (string) $lookup['remoteKeyColumn'];
+        $values = array_values(array_unique(array_filter(
+            array_map('trim', explode(',', (string) ($row[$column['name']] ?? ''))),
+            fn (string $value): bool => $value !== ''
+        )));
+
+        $db->query(
+            'DELETE FROM ' . db_identifier($relationshipTable) .
+            ' WHERE ' . db_identifier($localColumn) . ' = ' . sql_literal($db, $primaryKeyValue)
+        );
+
+        foreach ($values as $value) {
+            $db->query(
+                'INSERT INTO ' . db_identifier($relationshipTable) .
+                ' (' . db_identifier($localColumn) . ', ' . db_identifier($remoteColumn) . ') VALUES (' .
+                sql_literal($db, $primaryKeyValue) . ', ' . sql_literal($db, $value) . ')'
+            );
+        }
+    }
+}
+
 try {
     $db = db_connect();
     $request = record_request();
@@ -206,6 +250,13 @@ try {
                 continue;
             }
 
+            $lookup = $column['lookup'] ?? null;
+            if (is_array($lookup) && ($lookup['kind'] ?? 'static') === 'table' && ($lookup['mode'] ?? 'single') === 'multiple') {
+                $normalizedValues[$name] = (string) ($row[$name] ?? '');
+                $assignments[] = db_identifier($name) . ' = NULL';
+                continue;
+            }
+
             $value = normalize_record_value($row[$name] ?? null, $column);
             $normalizedValues[$name] = $value;
             $assignments[] = db_identifier($name) . ' = ' . sql_literal($db, $value);
@@ -221,6 +272,7 @@ try {
             ' WHERE ' . db_identifier($primaryKey) . ' = ' . sql_literal($db, $primaryKeyValue) .
             ' LIMIT 1'
         );
+        sync_lookup_relationships($db, $columns, (string) $primaryKeyValue, $normalizedValues);
 
         foreach ($columns as $column) {
             $name = $column['name'];
@@ -267,6 +319,12 @@ try {
 
     foreach ($columns as $column) {
         $name = $column['name'];
+        $lookup = $column['lookup'] ?? null;
+        if (is_array($lookup) && ($lookup['kind'] ?? 'static') === 'table' && ($lookup['mode'] ?? 'single') === 'multiple') {
+            $columnSql[] = db_identifier($name);
+            $valueSql[] = 'NULL';
+            continue;
+        }
         $value = normalize_record_value($row[$name] ?? null, $column);
 
         if ($name === $primaryKey && $column['type'] === 'AutoNumber' && $value === null) {
@@ -287,6 +345,9 @@ try {
     }
 
     $insertId = $db->insert_id;
+    if ($insertId && $primaryKey) {
+        sync_lookup_relationships($db, $columns, (string) $insertId, $row);
+    }
     $insertedRow = $insertId && $primaryKey
         ? fetch_table_row_by_primary_key($db, $resolvedTable, $primaryKey, $insertId)
         : null;

@@ -712,6 +712,9 @@ function initTableViews(db) {
             const normalizedType = addableAccessType(type);
             const fixedType = Boolean(normalizedType);
             const afterColumn = columnByName(cursorColumnName)?.name || columnByName(activeColumnName)?.name || '';
+            if (normalizedType === 'Lookup & Relationship') {
+                return openLookupWizardForColumn(null, afterColumn);
+            }
             const result = await showColumnDialog({
                 title: 'Add Field',
                 label: 'Field name',
@@ -721,6 +724,9 @@ function initTableViews(db) {
                 typeValue: normalizedType || 'Short Text',
                 onSubmit: async ({ name, type: dialogType, friendlyName, comment }) => {
                     const selectedType = fixedType ? normalizedType : dialogType;
+                    if (selectedType === 'Lookup & Relationship') {
+                        return { lookupRequested: true, name, type: selectedType, friendlyName, comment, afterColumn };
+                    }
                     status.textContent = 'Adding field...';
                     const response = await postSchemaAction({
                         action: 'addColumn',
@@ -737,6 +743,13 @@ function initTableViews(db) {
 
             if (!result) {
                 return null;
+            }
+
+            if (result.lookupRequested) {
+                return openLookupWizardForColumn(null, result.afterColumn, {
+                    defaultName: result.name,
+                    defaultFriendlyName: result.friendlyName
+                });
             }
 
             applyTablePayload(result.response?.payload);
@@ -771,6 +784,80 @@ function initTableViews(db) {
             renderTable();
             updateCellCursor();
             return result;
+        }
+
+        async function openLookupWizardForColumn(column = null, afterColumn = '', wizardOptions = {}) {
+            if (!window.AccessLookupWizard?.open) {
+                await showMessageDialog({
+                    title: 'Lookup Wizard',
+                    message: 'The Lookup Wizard could not be loaded.',
+                    confirmText: 'OK'
+                });
+                return null;
+            }
+
+            const overviewDb = await getDatabase();
+            mergeViewData(overviewDb, { tables: { [tableName]: tableDef } });
+            const result = await window.AccessLookupWizard.open({
+                db: overviewDb,
+                tableName,
+                tableColumns: tableDef.structure.columns,
+                existingColumn: column,
+                defaultName: wizardOptions.defaultName || column?.name || generatedFieldName(tableDef.structure.columns),
+                defaultFriendlyName: wizardOptions.defaultFriendlyName || ''
+            });
+
+            if (!result) {
+                return null;
+            }
+
+            try {
+                status.textContent = column ? 'Updating lookup field...' : 'Creating lookup field...';
+                const response = await postSchemaAction(column ? {
+                    action: 'updateLookupField',
+                    table: tableName,
+                    column: column.name,
+                    friendlyName: result.friendlyName,
+                    lookup: result.lookup
+                } : {
+                    action: 'createLookupField',
+                    table: tableName,
+                    name: result.name,
+                    friendlyName: result.friendlyName,
+                    lookup: result.lookup,
+                    afterColumn
+                });
+
+                applyTablePayload(response.payload);
+                if (!column) {
+                    rememberInsertedColumnPosition(result.name, afterColumn);
+                    activeColumnName = result.name;
+                    cursorColumnName = result.name;
+                }
+                renderTable();
+                updateCellCursor();
+                databasePromise = null;
+                status.textContent = column ? `Lookup updated for ${column.name}` : `Added lookup field ${result.name}`;
+                return result;
+            } catch (error) {
+                await showMessageDialog({
+                    title: 'Lookup Wizard Error',
+                    message: error.message,
+                    confirmText: 'OK'
+                });
+                renderTable();
+                updateCellCursor();
+                return null;
+            }
+        }
+
+        async function modifyActiveLookup() {
+            const column = columnByName(activeColumnName);
+            if (!column?.lookup) {
+                return;
+            }
+
+            await openLookupWizardForColumn(column);
         }
 
         async function deleteActiveColumn() {
@@ -1096,6 +1183,7 @@ function initTableViews(db) {
             deleteActiveColumn,
             openDefaultValueBuilder,
             openCalculatedExpressionBuilder,
+            modifyActiveLookup,
             toggleMemoSetting,
             showColumnHistory,
             setActiveColumn,

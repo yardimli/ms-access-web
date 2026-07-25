@@ -147,12 +147,112 @@ function fetch_table_names(mysqli $db): array
 
     foreach ($result as $row) {
         $table = array_values($row)[0];
-        if (!in_array($table, ['access_object_definitions', 'access_column_history'], true)) {
+        if (
+            !in_array($table, ['access_object_definitions', 'access_column_history'], true)
+            && !str_ends_with(strtolower($table), '_relationship')
+        ) {
             $tables[] = $table;
         }
     }
 
     return $tables;
+}
+
+function physical_table_exists(mysqli $db, string $tableName): bool
+{
+    $stmt = $db->prepare(
+        'SELECT 1
+         FROM information_schema.tables
+         WHERE table_schema = DATABASE()
+           AND table_name = ?
+         LIMIT 1'
+    );
+    $stmt->bind_param('s', $tableName);
+    $stmt->execute();
+
+    return (bool) $stmt->get_result()->fetch_assoc();
+}
+
+function lookup_option_value(mixed $option): string
+{
+    return is_array($option) ? (string) ($option['key'] ?? '') : (string) $option;
+}
+
+function lookup_option_label(mixed $option): string
+{
+    return is_array($option) ? (string) ($option['value'] ?? $option['label'] ?? $option['key'] ?? '') : (string) $option;
+}
+
+function hydrate_lookup_metadata(mysqli $db, string $tableName, array $columns, string $primaryKey): array
+{
+    foreach ($columns as &$column) {
+        $lookup = $column['lookup'] ?? null;
+        if (!is_array($lookup)) {
+            continue;
+        }
+
+        if (($lookup['kind'] ?? 'static') === 'table') {
+            $sourceName = resolve_table_name($db, (string) ($lookup['sourceObjectName'] ?? $lookup['sourceTable'] ?? ''));
+            if (!$sourceName) {
+                $column['lookup'] = $lookup;
+                continue;
+            }
+
+            [$sourceColumns] = fetch_table_columns($db, $sourceName);
+            $sourceColumnNames = array_map(fn (array $item): string => $item['name'], $sourceColumns);
+            $keyColumn = (string) ($lookup['keyColumn'] ?? '');
+            if ($keyColumn === '' || !in_array($keyColumn, $sourceColumnNames, true)) {
+                $keyColumn = $sourceColumns[0]['name'] ?? '';
+            }
+            $displayColumns = array_values(array_filter(
+                (array) ($lookup['displayColumns'] ?? $lookup['selectedFields'] ?? []),
+                fn ($name): bool => in_array((string) $name, $sourceColumnNames, true)
+            ));
+            if (!$displayColumns) {
+                $displayColumns = array_slice(array_values(array_filter($sourceColumnNames, fn ($name): bool => $name !== $keyColumn)), 0, 1);
+            }
+            if (!$displayColumns && $keyColumn !== '') {
+                $displayColumns = [$keyColumn];
+            }
+
+            $selectColumns = array_values(array_unique(array_filter(array_merge([$keyColumn], $displayColumns))));
+            $orderSql = '';
+            $sorts = array_values(array_filter((array) ($lookup['sort'] ?? []), fn ($sort): bool => is_array($sort) && in_array((string) ($sort['field'] ?? ''), $sourceColumnNames, true)));
+            if ($sorts) {
+                $parts = array_map(
+                    fn (array $sort): string => db_identifier((string) $sort['field']) . ' ' . (strtolower((string) ($sort['direction'] ?? 'asc')) === 'desc' ? 'DESC' : 'ASC'),
+                    array_slice($sorts, 0, 4)
+                );
+                $orderSql = ' ORDER BY ' . implode(', ', $parts);
+            }
+
+            $result = $db->query(
+                'SELECT ' . implode(', ', array_map('db_identifier', $selectColumns)) .
+                ' FROM ' . db_identifier($sourceName) . $orderSql . ' LIMIT 500'
+            );
+            $source = [];
+            foreach ($result as $row) {
+                $labelParts = [];
+                foreach ($displayColumns as $displayColumn) {
+                    $labelParts[] = (string) ($row[$displayColumn] ?? '');
+                }
+                $source[] = [
+                    'key' => (string) ($row[$keyColumn] ?? ''),
+                    'value' => trim(implode(' ', array_filter($labelParts, fn ($value): bool => $value !== ''))) ?: (string) ($row[$keyColumn] ?? ''),
+                    'row' => $row,
+                ];
+            }
+
+            $lookup['sourceObjectName'] = $sourceName;
+            $lookup['keyColumn'] = $keyColumn;
+            $lookup['displayColumns'] = $displayColumns;
+            $lookup['source'] = $source;
+            $column['lookup'] = $lookup;
+        }
+    }
+    unset($column);
+
+    return $columns;
 }
 
 function fetch_table_columns(mysqli $db, string $tableName): array
@@ -175,7 +275,10 @@ function fetch_table_columns(mysqli $db, string $tableName): array
 
     foreach ($stmt->get_result() as $row) {
         $inferredAccessType = access_type_from_mysql($row['data_type'], $row['column_type'], $row['column_key']);
-        $accessType = (string) ($columnMetadata[$row['column_name']]['accessType'] ?? $inferredAccessType);
+        $columnDefinition = $columnMetadata[$row['column_name']] ?? [];
+        $accessType = is_array($columnDefinition['lookup'] ?? null)
+            ? 'Lookup & Relationship'
+            : (string) ($columnDefinition['accessType'] ?? $inferredAccessType);
         $friendlyName = trim((string) ($columnMetadata[$row['column_name']]['friendlyName'] ?? ''));
         $fieldSize = $row['character_maximum_length'] ?: $row['numeric_precision'];
         $mysqlType = canonical_mysql_type($row['data_type'], $row['column_type']);
@@ -248,6 +351,7 @@ function fetch_table_row_by_primary_key(mysqli $db, string $tableName, string $p
 function fetch_table_payload(mysqli $db, string $tableName, bool $includeRows = true): array
 {
     [$columns, $primaryKey] = fetch_table_columns($db, $tableName);
+    $columns = hydrate_lookup_metadata($db, $tableName, $columns, $primaryKey);
     $payload = [
         'structure' => [
             'primaryKey' => $primaryKey,
@@ -256,7 +360,46 @@ function fetch_table_payload(mysqli $db, string $tableName, bool $includeRows = 
     ];
 
     if ($includeRows) {
-        $payload['data'] = fetch_table_rows($db, $tableName);
+        $rows = fetch_table_rows($db, $tableName);
+        foreach ($columns as $column) {
+            $lookup = $column['lookup'] ?? null;
+            if (
+                !is_array($lookup)
+                || ($lookup['kind'] ?? 'static') !== 'table'
+                || ($lookup['mode'] ?? 'single') !== 'multiple'
+                || empty($lookup['relationshipTable'])
+                || empty($lookup['localKeyColumn'])
+                || empty($lookup['remoteKeyColumn'])
+                || $primaryKey === ''
+            ) {
+                continue;
+            }
+
+            $relationshipTable = (string) $lookup['relationshipTable'];
+            if (!physical_table_exists($db, $relationshipTable)) {
+                continue;
+            }
+            $localColumn = (string) $lookup['localKeyColumn'];
+            $remoteColumn = (string) $lookup['remoteKeyColumn'];
+            $map = [];
+            $result = $db->query(
+                'SELECT ' . db_identifier($localColumn) . ', ' . db_identifier($remoteColumn) .
+                ' FROM ' . db_identifier($relationshipTable)
+            );
+            foreach ($result as $relationshipRow) {
+                $localValue = (string) ($relationshipRow[$localColumn] ?? '');
+                if ($localValue === '') {
+                    continue;
+                }
+                $map[$localValue] ??= [];
+                $map[$localValue][] = (string) ($relationshipRow[$remoteColumn] ?? '');
+            }
+            foreach ($rows as &$row) {
+                $row[$column['name']] = implode(',', $map[(string) ($row[$primaryKey] ?? '')] ?? []);
+            }
+            unset($row);
+        }
+        $payload['data'] = $rows;
     }
 
     return $payload;

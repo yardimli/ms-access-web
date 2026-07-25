@@ -1,5 +1,10 @@
 <?php
 $initialView = $_GET['view'] ?? 'table-customers';
+$tableAssetVersion = max(
+    filemtime(__DIR__ . '/assets/tables.css'),
+    filemtime(__DIR__ . '/assets/tables_editing.js'),
+    filemtime(__DIR__ . '/assets/tables_lookup.js')
+);
 ?>
 <!doctype html>
 <html lang="en" translate="no" class="notranslate">
@@ -11,7 +16,7 @@ $initialView = $_GET['view'] ?? 'table-customers';
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="vendor/fontawesome/css/all.min.css">
     <link rel="stylesheet" href="assets/app.css">
-    <link rel="stylesheet" href="assets/tables.css">
+    <link rel="stylesheet" href="assets/tables.css?v=<?= $tableAssetVersion ?>">
     <link rel="stylesheet" href="assets/forms.css">
     <link rel="stylesheet" href="assets/queries.css">
     <link rel="stylesheet" href="assets/reports.css">
@@ -103,7 +108,8 @@ $initialView = $_GET['view'] ?? 'table-customers';
     <script src="assets/expression-builder.js"></script>
     <script src="assets/tables_ribbon.js"></script>
     <script src="assets/tables_grid.js"></script>
-    <script src="assets/tables_editing.js"></script>
+    <script src="assets/tables_editing.js?v=<?= $tableAssetVersion ?>"></script>
+    <script src="assets/tables_lookup.js?v=<?= $tableAssetVersion ?>"></script>
     <script src="assets/tables_datasheet.js"></script>
     <script src="assets/tables_design.js"></script>
     <script src="assets/forms.js"></script>

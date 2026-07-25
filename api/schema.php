@@ -85,23 +85,33 @@ function quick_start_definition(string $type): array
 {
     return match ($type) {
         'Address' => ['accessType' => 'Short Text', 'mysqlType' => 'VARCHAR(255)', 'friendlyName' => 'Address'],
-        'Category' => ['accessType' => 'Short Text', 'mysqlType' => 'VARCHAR(255)', 'friendlyName' => 'Category', 'lookup' => [
-            'mode' => 'single', 'valueType' => 'string', 'source' => ['Hardware', 'Software', 'Service', 'Other']
+        'Category' => ['accessType' => 'Lookup & Relationship', 'mysqlType' => 'VARCHAR(255)', 'friendlyName' => 'Category', 'lookup' => [
+            'kind' => 'static', 'mode' => 'single', 'valueType' => 'string', 'columns' => 1,
+            'keyColumn' => 'Col1', 'displayColumns' => ['Col1'], 'limitToList' => true,
+            'createdBy' => 'quickStart', 'source' => ['Hardware', 'Software', 'Service', 'Other']
         ]],
         'Name' => ['accessType' => 'Short Text', 'mysqlType' => 'VARCHAR(255)', 'friendlyName' => 'Name'],
-        'Payment Type' => ['accessType' => 'Short Text', 'mysqlType' => 'VARCHAR(255)', 'friendlyName' => 'Payment Type', 'lookup' => [
-            'mode' => 'single', 'valueType' => 'integer', 'source' => [['key' => 1, 'value' => 'Cash'], ['key' => 2, 'value' => 'Credit Card'], ['key' => 3, 'value' => 'Wire Transfer']]
+        'Payment Type' => ['accessType' => 'Lookup & Relationship', 'mysqlType' => 'VARCHAR(255)', 'friendlyName' => 'Payment Type', 'lookup' => [
+            'kind' => 'static', 'mode' => 'single', 'valueType' => 'integer', 'columns' => 2,
+            'keyColumn' => 'Col1', 'displayColumns' => ['Col2'], 'limitToList' => true,
+            'createdBy' => 'quickStart', 'source' => [['key' => 1, 'value' => 'Cash'], ['key' => 2, 'value' => 'Credit Card'], ['key' => 3, 'value' => 'Wire Transfer']]
         ]],
         'Phone' => ['accessType' => 'Short Text', 'mysqlType' => 'VARCHAR(40)', 'friendlyName' => 'Phone'],
-        'Priority' => ['accessType' => 'Number', 'mysqlType' => 'INT', 'friendlyName' => 'Priority', 'lookup' => [
-            'mode' => 'single', 'valueType' => 'integer', 'source' => [['key' => 1, 'value' => 'Low'], ['key' => 2, 'value' => 'Normal'], ['key' => 3, 'value' => 'High']]
+        'Priority' => ['accessType' => 'Lookup & Relationship', 'mysqlType' => 'INT', 'friendlyName' => 'Priority', 'lookup' => [
+            'kind' => 'static', 'mode' => 'single', 'valueType' => 'integer', 'columns' => 2,
+            'keyColumn' => 'Col1', 'displayColumns' => ['Col2'], 'limitToList' => true,
+            'createdBy' => 'quickStart', 'source' => [['key' => 1, 'value' => 'Low'], ['key' => 2, 'value' => 'Normal'], ['key' => 3, 'value' => 'High']]
         ]],
         'Start and End Dates' => ['accessType' => 'Short Text', 'mysqlType' => 'VARCHAR(255)', 'friendlyName' => 'Start and End Dates'],
-        'Status' => ['accessType' => 'Short Text', 'mysqlType' => 'VARCHAR(80)', 'friendlyName' => 'Status', 'lookup' => [
-            'mode' => 'single', 'valueType' => 'string', 'source' => ['New', 'In Progress', 'Blocked', 'Done']
+        'Status' => ['accessType' => 'Lookup & Relationship', 'mysqlType' => 'VARCHAR(80)', 'friendlyName' => 'Status', 'lookup' => [
+            'kind' => 'static', 'mode' => 'single', 'valueType' => 'string', 'columns' => 1,
+            'keyColumn' => 'Col1', 'displayColumns' => ['Col1'], 'limitToList' => true,
+            'createdBy' => 'quickStart', 'source' => ['New', 'In Progress', 'Blocked', 'Done']
         ]],
-        'Tag' => ['accessType' => 'Long Text', 'mysqlType' => 'TEXT', 'friendlyName' => 'Tag', 'lookup' => [
-            'mode' => 'multiple', 'valueType' => 'string', 'source' => ['Important', 'Follow Up', 'Internal', 'External']
+        'Tag' => ['accessType' => 'Lookup & Relationship', 'mysqlType' => 'TEXT', 'friendlyName' => 'Tag', 'lookup' => [
+            'kind' => 'static', 'mode' => 'multiple', 'valueType' => 'string', 'columns' => 1,
+            'keyColumn' => 'Col1', 'displayColumns' => ['Col1'], 'limitToList' => true,
+            'createdBy' => 'quickStart', 'source' => ['Important', 'Follow Up', 'Internal', 'External']
         ]],
         'Calculated Field' => ['accessType' => 'Calculated Field', 'mysqlType' => 'VARCHAR(255)', 'friendlyName' => 'Calculated Field'],
         default => ['accessType' => $type, 'mysqlType' => mysql_column_type_for_access_type($type), 'friendlyName' => ''],
@@ -219,6 +229,172 @@ function update_column_metadata(mysqli $db, string $tableName, string $columnNam
         $metadata['columns'][$columnName]['mysqlType'] = $mysqlType;
     }
     save_table_metadata($db, $tableName, $metadata);
+}
+
+function validate_lookup_source_options(array $source): array
+{
+    $options = [];
+    foreach ($source as $option) {
+        if (is_array($option)) {
+            $key = trim((string) ($option['key'] ?? ''));
+            $value = trim((string) ($option['value'] ?? $option['label'] ?? ''));
+            if ($key === '' && $value !== '') {
+                $key = $value;
+            }
+            if ($key === '' || $value === '') {
+                continue;
+            }
+            $options[] = ['key' => $key, 'value' => $value];
+        } else {
+            $value = trim((string) $option);
+            if ($value !== '') {
+                $options[] = $value;
+            }
+        }
+    }
+
+    if (!$options) {
+        throw new RuntimeException('Lookup fields need at least one value.');
+    }
+
+    return $options;
+}
+
+function lookup_relationship_table_name(string $leftTable, string $rightTable): string
+{
+    $left = preg_replace('/[^A-Za-z0-9_]+/', '_', strtolower($leftTable));
+    $right = preg_replace('/[^A-Za-z0-9_]+/', '_', strtolower($rightTable));
+    return substr($left . '_' . $right . '_relationship', 0, 64);
+}
+
+function first_primary_key(mysqli $db, string $tableName): string
+{
+    [$columns, $primaryKey] = fetch_table_columns($db, $tableName);
+    if ($primaryKey !== '') {
+        return $primaryKey;
+    }
+
+    return $columns[0]['name'] ?? '';
+}
+
+function normalize_lookup_config(mysqli $db, string $ownerTable, array $config, ?array $existingLookup = null): array
+{
+    $existingKind = $existingLookup
+        ? (string) ($existingLookup['kind'] ?? (!empty($existingLookup['sourceObjectName']) || !empty($existingLookup['sourceTable']) ? 'table' : 'static'))
+        : '';
+    $kind = (string) ($config['kind'] ?? $existingKind ?: 'static');
+    if (!in_array($kind, ['static', 'table'], true)) {
+        throw new RuntimeException('Unsupported lookup source type.');
+    }
+
+    if ($existingLookup && $existingKind !== $kind) {
+        throw new RuntimeException('Existing lookups cannot be converted between static values and table/query values.');
+    }
+
+    $mode = filter_var($config['allowMultiple'] ?? $config['multiple'] ?? false, FILTER_VALIDATE_BOOL) ? 'multiple' : 'single';
+    $lookup = [
+        'kind' => $kind,
+        'mode' => $mode,
+        'label' => trim((string) ($config['label'] ?? '')),
+        'createdBy' => 'lookupWizard',
+        'updatedAt' => date(DATE_ATOM),
+    ];
+
+    if ($kind === 'static') {
+        $lookup['valueType'] = (string) ($config['valueType'] ?? 'string');
+        $lookup['limitToList'] = filter_var($config['limitToList'] ?? false, FILTER_VALIDATE_BOOL);
+        $lookup['columns'] = max(1, min(8, (int) ($config['columns'] ?? 1)));
+        $lookup['keyColumn'] = trim((string) ($config['keyColumn'] ?? 'Col1')) ?: 'Col1';
+        $lookup['displayColumns'] = array_values(array_filter((array) ($config['displayColumns'] ?? ['Col1'])));
+        $lookup['source'] = validate_lookup_source_options((array) ($config['source'] ?? []));
+        return $lookup;
+    }
+
+    $sourceType = (string) ($config['sourceObjectType'] ?? 'table');
+    if (!in_array($sourceType, ['table', 'query'], true)) {
+        throw new RuntimeException('Lookup source must be a table or query.');
+    }
+    $sourceName = trim((string) ($config['sourceObjectName'] ?? ''));
+    if ($sourceName === '') {
+        throw new RuntimeException('Choose the table or query that provides lookup values.');
+    }
+
+    if ($sourceType === 'table') {
+        $resolvedSource = resolve_table_name($db, $sourceName);
+        if (!$resolvedSource) {
+            throw new RuntimeException('Lookup source table was not found.');
+        }
+        $sourceName = $resolvedSource;
+        [$sourceColumns] = fetch_table_columns($db, $sourceName);
+        $sourceColumnNames = array_map(fn (array $column): string => $column['name'], $sourceColumns);
+        $keyColumn = trim((string) ($config['keyColumn'] ?? first_primary_key($db, $sourceName)));
+        if (!in_array($keyColumn, $sourceColumnNames, true)) {
+            throw new RuntimeException('Lookup key field was not found in the source table.');
+        }
+        $selectedFields = array_values(array_filter((array) ($config['selectedFields'] ?? []), fn ($name): bool => in_array((string) $name, $sourceColumnNames, true)));
+        if (!$selectedFields) {
+            $selectedFields = [$keyColumn];
+        }
+        $displayColumns = array_values(array_filter((array) ($config['displayColumns'] ?? $selectedFields), fn ($name): bool => in_array((string) $name, $sourceColumnNames, true)));
+        if (!$displayColumns) {
+            $displayColumns = $selectedFields;
+        }
+        $lookup += [
+            'sourceObjectType' => 'table',
+            'sourceObjectName' => $sourceName,
+            'selectedFields' => $selectedFields,
+            'displayColumns' => $displayColumns,
+            'keyColumn' => $keyColumn,
+            'hideKeyColumn' => filter_var($config['hideKeyColumn'] ?? true, FILTER_VALIDATE_BOOL),
+            'dataIntegrity' => filter_var($config['dataIntegrity'] ?? false, FILTER_VALIDATE_BOOL),
+            'cascadeDelete' => filter_var($config['cascadeDelete'] ?? false, FILTER_VALIDATE_BOOL),
+            'sort' => array_values(array_filter((array) ($config['sort'] ?? []), fn ($sort): bool => is_array($sort) && !empty($sort['field']))),
+        ];
+
+        if ($mode === 'multiple') {
+            $ownerKey = first_primary_key($db, $ownerTable);
+            if ($ownerKey === '') {
+                throw new RuntimeException('The current table needs a primary key before it can use a multi-value lookup.');
+            }
+            $relationshipTable = lookup_relationship_table_name($ownerTable, $sourceName);
+            $localKeyColumn = substr(preg_replace('/[^A-Za-z0-9_]+/', '_', strtolower($ownerTable)) . '_' . $ownerKey, 0, 60);
+            $remoteKeyColumn = substr(preg_replace('/[^A-Za-z0-9_]+/', '_', strtolower($sourceName)) . '_' . $keyColumn, 0, 60);
+            $db->query(
+                'CREATE TABLE IF NOT EXISTS ' . db_identifier($relationshipTable) . ' (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    ' . db_identifier($localKeyColumn) . ' VARCHAR(255) NOT NULL,
+                    ' . db_identifier($remoteKeyColumn) . ' VARCHAR(255) NOT NULL,
+                    UNIQUE KEY ' . db_identifier('ux_' . substr($relationshipTable, 0, 48)) . ' (' . db_identifier($localKeyColumn) . ', ' . db_identifier($remoteKeyColumn) . '),
+                    INDEX ' . db_identifier('ix_' . substr($localKeyColumn, 0, 50)) . ' (' . db_identifier($localKeyColumn) . '),
+                    INDEX ' . db_identifier('ix_' . substr($remoteKeyColumn, 0, 50)) . ' (' . db_identifier($remoteKeyColumn) . ')
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
+            );
+            $lookup['relationshipTable'] = $relationshipTable;
+            $lookup['localKeyColumn'] = $localKeyColumn;
+            $lookup['remoteKeyColumn'] = $remoteKeyColumn;
+        }
+
+        return $lookup;
+    }
+
+    if (!fetch_object($db, 'query', $sourceName)) {
+        throw new RuntimeException('Lookup source query was not found.');
+    }
+
+    $lookup += [
+        'sourceObjectType' => 'query',
+        'sourceObjectName' => $sourceName,
+        'selectedFields' => array_values(array_filter((array) ($config['selectedFields'] ?? []))),
+        'displayColumns' => array_values(array_filter((array) ($config['displayColumns'] ?? $config['selectedFields'] ?? []))),
+        'keyColumn' => trim((string) ($config['keyColumn'] ?? '')),
+        'hideKeyColumn' => filter_var($config['hideKeyColumn'] ?? true, FILTER_VALIDATE_BOOL),
+        'sort' => array_values(array_filter((array) ($config['sort'] ?? []), fn ($sort): bool => is_array($sort) && !empty($sort['field']))),
+    ];
+    if (($lookup['keyColumn'] ?? '') === '') {
+        throw new RuntimeException('Choose the query field that uniquely identifies lookup rows.');
+    }
+
+    return $lookup;
 }
 
 function fetch_column_key(mysqli $db, string $tableName, string $columnName): string
@@ -352,6 +528,96 @@ try {
             $metadata['columns'][$fieldName]['lookup'] = $quickDefinition['lookup'];
             save_table_metadata($db, $resolvedTable, $metadata);
         }
+
+        json_response([
+            'ok' => true,
+            'table' => $resolvedTable,
+            'payload' => fetch_table_payload($db, $resolvedTable, true),
+        ]);
+        exit;
+    }
+
+    if ($action === 'createLookupField') {
+        $fieldName = validate_field_name((string) ($request['name'] ?? ''));
+        $friendlyName = trim((string) ($request['friendlyName'] ?? $request['label'] ?? ''));
+        $comment = trim((string) ($request['comment'] ?? ''));
+        $afterColumn = trim((string) ($request['afterColumn'] ?? ''));
+        $lookup = normalize_lookup_config($db, $resolvedTable, is_array($request['lookup'] ?? null) ? $request['lookup'] : []);
+
+        if ($friendlyName === '') {
+            $friendlyName = (string) ($lookup['label'] ?? '');
+        }
+        if ($friendlyName === '') {
+            $friendlyName = label_from_column($fieldName);
+        }
+
+        if (column_exists($db, $resolvedTable, $fieldName)) {
+            throw new RuntimeException('A field with that name already exists.');
+        }
+
+        $afterClause = '';
+        if ($afterColumn !== '') {
+            $afterColumn = validate_field_name($afterColumn);
+            if (!column_exists($db, $resolvedTable, $afterColumn)) {
+                throw new RuntimeException('The selected insertion field was not found.');
+            }
+            $afterClause = ' AFTER ' . db_identifier($afterColumn);
+        }
+
+        $mysqlType = 'VARCHAR(255)';
+        if (($lookup['kind'] ?? 'static') === 'table') {
+            $mysqlType = 'INT';
+        } elseif (($lookup['mode'] ?? 'single') === 'multiple') {
+            $mysqlType = 'TEXT';
+        }
+
+        $db->query(
+            'ALTER TABLE ' . db_identifier($resolvedTable) .
+            ' ADD COLUMN ' . db_identifier($fieldName) . ' ' . $mysqlType . ' NULL' .
+            ($comment !== '' ? " COMMENT '" . addslashes($comment) . "'" : '') .
+            $afterClause
+        );
+
+        $metadata = fetch_table_metadata($db, $resolvedTable);
+        $metadata['columns'] ??= [];
+        $metadata['columns'][$fieldName] = array_merge($metadata['columns'][$fieldName] ?? [], [
+            'friendlyName' => $friendlyName,
+            'accessType' => 'Lookup & Relationship',
+            'mysqlType' => $mysqlType,
+            'accessFormat' => '',
+            'decimalPlaces' => 2,
+            'lookup' => $lookup,
+        ]);
+        save_table_metadata($db, $resolvedTable, $metadata);
+
+        json_response([
+            'ok' => true,
+            'table' => $resolvedTable,
+            'payload' => fetch_table_payload($db, $resolvedTable, true),
+        ]);
+        exit;
+    }
+
+    if ($action === 'updateLookupField') {
+        $columnName = validate_field_name((string) ($request['column'] ?? ''));
+        if (!column_exists($db, $resolvedTable, $columnName)) {
+            throw new RuntimeException('Field was not found.');
+        }
+
+        $metadata = fetch_table_metadata($db, $resolvedTable);
+        $existingLookup = $metadata['columns'][$columnName]['lookup'] ?? null;
+        if (!is_array($existingLookup)) {
+            throw new RuntimeException('The selected field is not a lookup field.');
+        }
+
+        $lookup = normalize_lookup_config($db, $resolvedTable, is_array($request['lookup'] ?? null) ? $request['lookup'] : [], $existingLookup);
+        $friendlyName = trim((string) ($request['friendlyName'] ?? $request['label'] ?? $metadata['columns'][$columnName]['friendlyName'] ?? ''));
+        $metadata['columns'] ??= [];
+        $metadata['columns'][$columnName] ??= [];
+        $metadata['columns'][$columnName]['friendlyName'] = $friendlyName;
+        $metadata['columns'][$columnName]['accessType'] = 'Lookup & Relationship';
+        $metadata['columns'][$columnName]['lookup'] = $lookup;
+        save_table_metadata($db, $resolvedTable, $metadata);
 
         json_response([
             'ok' => true,

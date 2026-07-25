@@ -28,10 +28,12 @@ function positionActiveCellEditor() {
     }
 
     const rect = cell.getBoundingClientRect();
-    editor.style.left = `${rect.left}px`;
-    editor.style.top = `${rect.top}px`;
-    editor.style.width = `${rect.width}px`;
-    editor.style.height = activeCellEditor.lookupMode === 'multiple' || activeCellEditor.htmlMode ? 'auto' : `${rect.height}px`;
+    const isMultipleLookup = activeCellEditor.lookupMode === 'multiple';
+    const editorWidth = isMultipleLookup ? Math.max(rect.width, 160) : rect.width;
+    editor.style.left = `${Math.max(0, Math.min(rect.left, window.innerWidth - editorWidth - 8))}px`;
+    editor.style.top = `${isMultipleLookup ? rect.bottom + 1 : rect.top}px`;
+    editor.style.width = `${editorWidth}px`;
+    editor.style.height = isMultipleLookup || activeCellEditor.htmlMode ? 'auto' : `${rect.height}px`;
 }
 
 function normalizeCellValue(value, type) {
@@ -157,7 +159,7 @@ function closeActiveCellEditor(commit = true) {
 }
 
 function shouldKeepCellEditorOpen(target) {
-    return Boolean(target?.closest?.('.cell-edit-input, .html-editor-toolbar, header, .create-menu, .more-fields-menu, [data-add-column], [data-add-column-button]'));
+    return Boolean(target?.closest?.('.cell-edit-control, .cell-edit-input, .lookup-checkbox-editor, .html-editor-toolbar, header, .create-menu, .more-fields-menu, [data-add-column], [data-add-column-button]'));
 }
 
 function enableEditableCells(container, rows, options = {}) {
@@ -234,6 +236,7 @@ function enableEditableCells(container, rows, options = {}) {
                 const value = lookupOptionValue(option);
                 return `<label><input type="checkbox" value="${escapeHtml(value)}" ${selected.has(value) ? 'checked' : ''}> <span>${escapeHtml(lookupOptionLabel(option))}</span></label>`;
             }).join('');
+            box.addEventListener('click', event => event.stopPropagation());
             editor.appendChild(box);
         } else if (isYesNoColumn(type)) {
             input.type = 'checkbox';

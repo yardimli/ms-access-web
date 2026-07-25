@@ -11,6 +11,7 @@ const tableDataTypes = [
     'OLE Object',
     'Hyperlink',
     'Attachment',
+    'Lookup & Relationship',
     'Calculated',
     'Lookup Wizard...'
 ];
@@ -176,6 +177,7 @@ function updateFieldsRibbonState(column = window.accessActiveTableColumn) {
     const formatSelect = ribbon.querySelector('[data-field-format]');
     const formatButtons = ribbon.querySelectorAll('[data-format-command]');
     const defaultButton = ribbon.querySelector('[data-command="default"]');
+    const lookupButton = ribbon.querySelector('[data-command="lookup"]');
     const expressionButton = ribbon.querySelector('[data-command="expression"]');
     const memoButton = ribbon.querySelector('[data-command="memo"]');
     const isCalculated = accessTypeForColumn(activeColumn) === 'Calculated Field' || Boolean(activeColumn?.calculatedJavascript);
@@ -197,6 +199,15 @@ function updateFieldsRibbonState(column = window.accessActiveTableColumn) {
             expressionButton.setAttribute('disabled', 'disabled');
         } else {
             expressionButton.removeAttribute('disabled');
+        }
+    }
+
+    if (lookupButton) {
+        lookupButton.classList.toggle('disabled', !activeColumn || !isLookup);
+        if (!activeColumn || !isLookup) {
+            lookupButton.setAttribute('disabled', 'disabled');
+        } else {
+            lookupButton.removeAttribute('disabled');
         }
     }
 
