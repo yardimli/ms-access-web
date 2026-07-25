@@ -1,8 +1,8 @@
 <?php
 
-require_once __DIR__ . '/lib/db.php';
+require_once __DIR__ . '/lib/acaciadb_data.php';
 
-function mysql_type_for_access(array $column): string
+function mysql_type_for_acaciadb(array $column): string
 {
     return match ($column['type'] ?? 'Short Text') {
         'AutoNumber' => 'INT NOT NULL AUTO_INCREMENT',
@@ -42,7 +42,7 @@ try {
     $seedPath = __DIR__ . '/data/database.json';
     $seed = json_decode(file_get_contents($seedPath), true, 512, JSON_THROW_ON_ERROR);
 
-    $database = env_value('DB_DATABASE', 'ms_acccess_web');
+    $database = env_value('DB_DATABASE', 'acaciadb');
     $server = db_connect(false);
     $server->query('CREATE DATABASE IF NOT EXISTS ' . db_identifier($database) . ' CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
     $server->select_db($database);
@@ -53,19 +53,10 @@ try {
         $server->query('DROP TABLE IF EXISTS ' . db_identifier($tableName));
     }
 
-    $server->query('DROP TABLE IF EXISTS access_object_definitions');
-    $server->query('DROP TABLE IF EXISTS access_table_columns');
-
-    $server->query(
-        'CREATE TABLE access_object_definitions (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            object_type ENUM("form", "query", "report", "table") NOT NULL,
-            object_name VARCHAR(120) NOT NULL,
-            definition_json JSON NOT NULL,
-            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            UNIQUE KEY object_unique (object_type, object_name)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
-    );
+    $server->query('DROP TABLE IF EXISTS acaciadb_object_definitions');
+    $server->query('DROP TABLE IF EXISTS acaciadb_column_history');
+    $server->query('DROP TABLE IF EXISTS acaciadb_table_columns');
+    ensure_acaciadb_storage($server);
 
     foreach ($seed['tables'] as $tableName => $table) {
         $columns = $table['structure']['columns'];
@@ -73,7 +64,7 @@ try {
         $definitions = [];
 
         foreach ($columns as $column) {
-            $definition = db_identifier($column['name']) . ' ' . mysql_type_for_access($column);
+            $definition = db_identifier($column['name']) . ' ' . mysql_type_for_acaciadb($column);
             if ($column['name'] === $primaryKey) {
                 $definition .= ' PRIMARY KEY';
             }
@@ -109,7 +100,7 @@ try {
     ];
 
     $objectStmt = $server->prepare(
-        'INSERT INTO access_object_definitions (object_type, object_name, definition_json) VALUES (?, ?, ?)'
+        'INSERT INTO acaciadb_object_definitions (object_type, object_name, definition_json) VALUES (?, ?, ?)'
     );
 
     foreach ($objects as $type => $definitions) {

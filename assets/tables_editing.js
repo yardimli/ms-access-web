@@ -2,7 +2,7 @@ let activeCellEditor = null;
 let rowMenu = null;
 
 function rowClipboardKey(tableName) {
-    return `msAccessWeb.table.${tableName}.rowClipboard`;
+    return `acaciadbWeb.table.${tableName}.rowClipboard`;
 }
 
 function closeRowMenu() {
@@ -182,7 +182,7 @@ function enableEditableCells(container, rows, options = {}) {
         const column = cell.dataset.column;
         const columnDefs = typeof options.columns === 'function' ? options.columns() : (options.columns || []);
         const columnDef = columnDefs.find(item => item.name === column) || { name: column, type: cell.dataset.type };
-        if (columnDef.accessType === 'Calculated Field' || columnDef.calculatedJavascript) {
+        if (columnDef.acaciadbType === 'Calculated Field' || columnDef.calculatedJavascript) {
             return false;
         }
         const type = cell.dataset.type;
@@ -309,8 +309,7 @@ function enableEditableCells(container, rows, options = {}) {
         }
     });
 
-    container.addEventListener('access-edit-cell', event => {
+    container.addEventListener('acaciadb-edit-cell', event => {
         openCellEditor(event.detail?.cell);
     });
 }
-

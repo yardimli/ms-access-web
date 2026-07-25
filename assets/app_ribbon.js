@@ -104,7 +104,7 @@ function ribbonIcon(name) {
         'class-module': 'fas fa-code-branch',
         relationships: 'fas fa-link',
         excel: 'fas fa-file-excel',
-        access: 'fas fa-database',
+        acaciadb: 'fas fa-database',
         odbc: 'fas fa-server',
         import: 'fas fa-file-import',
         export: 'fas fa-file-export',
@@ -280,8 +280,8 @@ function buildValidationMenu() {
 }
 
 function buildMemoMenu() {
-    const column = window.accessActiveTableColumn || {};
-    const isHtml = accessTypeForColumn(column) === 'HTML Text' || accessTypeForColumn(column) === 'Rich Text';
+    const column = window.acaciadbActiveTableColumn || {};
+    const isHtml = acaciadbTypeForColumn(column) === 'HTML Text' || acaciadbTypeForColumn(column) === 'Rich Text';
     return `
         <button class="validation-menu-item" type="button" data-memo-menu-item="appendOnly">
             <span class="validation-menu-icon">${ribbonIcon('caption')}</span>
@@ -742,6 +742,8 @@ function updateContextualRibbon(view) {
     const tableDesign = isTableDesignView(view);
     const showTableTools = tableDatasheet || tableDesign;
     const formDesign = view.startsWith('design-form-');
+
+    updateObjectPaneResizeState(view);
 
     contextualToolsLabel.textContent = formDesign ? 'Form Design Tools' : 'Table Tools';
     contextualToolsLabel?.classList.toggle('hidden', !showTableTools && !formDesign);

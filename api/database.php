@@ -1,6 +1,6 @@
 <?php
 
-require_once __DIR__ . '/../lib/access_data.php';
+require_once __DIR__ . '/../lib/acaciadb_data.php';
 
 try {
     $db = db_connect();
@@ -9,8 +9,8 @@ try {
     foreach (fetch_table_names($db) as $tableName) {
         $tables[$tableName] = [
             'name' => $tableName,
-            'view' => 'table-' . access_slug($tableName),
-            'designView' => 'design-' . access_slug($tableName),
+            'view' => 'table-' . acaciadb_slug($tableName),
+            'designView' => 'design-' . acaciadb_slug($tableName),
         ];
     }
 
@@ -19,7 +19,7 @@ try {
         function (array $carry, string $name) use ($prefix) {
             $carry[$name] = [
                 'name' => $name,
-                'view' => $prefix . access_slug($name),
+                'view' => $prefix . acaciadb_slug($name),
             ];
             return $carry;
         },
@@ -29,6 +29,7 @@ try {
     json_response([
         'ok' => true,
         'overview' => true,
+        'database' => active_database_name(),
         'tables' => $tables,
         'forms' => $objects('form', 'form-'),
         'queries' => $objects('query', 'query-'),
@@ -40,4 +41,3 @@ try {
         'error' => $exception->getMessage(),
     ], 500);
 }
-

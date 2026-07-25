@@ -147,7 +147,7 @@ function renderDocumentTabs() {
     tabs.innerHTML = `
         <div class="doc-tab-strip">
             ${openTabs.map(tab => `
-                <button class="doc-tab ${tab.view === currentView ? 'active' : ''}" data-tab-view="${escapeHtml(tab.view)}">
+                <button class="doc-tab ${tab.view === currentView ? 'active' : ''}" data-tab-view="${escapeHtml(tab.view)}" title="${escapeHtml(tab.title)}">
                     <i class="${getTabIcon(tab.view)}"></i>
                     <span>${escapeHtml(tab.title)}</span>
                 </button>

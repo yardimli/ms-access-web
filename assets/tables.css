@@ -1,4 +1,4 @@
-﻿.fields-ribbon {
+.fields-ribbon {
     display: flex;
     height: 100%;
     min-width: max-content;
@@ -505,7 +505,7 @@
     overflow: auto;
 }
 
-.access-grid {
+.acaciadb-grid {
     border-collapse: collapse;
     border-spacing: 0;
     table-layout: fixed;
@@ -513,9 +513,11 @@
     font-size: 13px;
 }
 
-.access-grid th {
-    position: relative;
-    height: var(--access-row-height, 24px);
+.acaciadb-grid th {
+    position: sticky;
+    z-index: 7;
+    top: 0;
+    height: var(--acaciadb-row-height, 24px);
     border: 1px solid #b9c6d4;
     background: linear-gradient(#f5f7f9, #d7dde4);
     padding: 2px 22px 2px 6px;
@@ -523,7 +525,7 @@
     font-weight: 400;
 }
 
-.access-grid th.row-head {
+.acaciadb-grid th.row-head {
     padding: 0;
 }
 
@@ -628,8 +630,8 @@
     background: rgba(43, 120, 189, .28);
 }
 
-.access-grid td {
-    height: var(--access-row-height, 24px);
+.acaciadb-grid td {
+    height: var(--acaciadb-row-height, 24px);
     border: 1px solid #d7e0ea;
     padding: 2px 6px;
     background: #fff;
@@ -638,23 +640,23 @@
     text-overflow: ellipsis;
 }
 
-.access-grid td.numeric-cell {
+.acaciadb-grid td.numeric-cell {
     text-align: right;
 }
 
-.access-grid td.yes-no-cell {
+.acaciadb-grid td.yes-no-cell {
     text-align: center;
 }
 
-.access-grid td.yes-no-cell input {
+.acaciadb-grid td.yes-no-cell input {
     pointer-events: none;
 }
 
-.access-grid tbody tr:nth-child(even) td {
+.acaciadb-grid tbody tr:nth-child(even) td {
     background: #f0f0f0;
 }
 
-.access-grid .row-head {
+.acaciadb-grid .row-head {
     position: relative;
     width: 28px;
     min-width: 28px;
@@ -679,43 +681,43 @@
     background: rgba(43, 120, 189, .28);
 }
 
-.access-grid .selected-head {
+.acaciadb-grid .selected-head {
     background: linear-gradient(#ffe983, #ffd64d);
 }
 
-.access-grid tbody tr.active-row td {
+.acaciadb-grid tbody tr.active-row td {
     background: #a8d2eb !important;
 }
 
-.access-grid tbody tr.active-row .row-head {
+.acaciadb-grid tbody tr.active-row .row-head {
     background: #ffd85b !important;
 }
 
-.access-grid tr.insert-row td {
+.acaciadb-grid tr.insert-row td {
     background: #f6f6f6;
 }
 
-.access-grid tr.insert-row .row-head {
+.acaciadb-grid tr.insert-row .row-head {
     color: #333;
     font-size: 18px;
 }
 
-.access-grid tbody tr.active-row td {
+.acaciadb-grid tbody tr.active-row td {
     background: #a8d2eb !important;
 }
 
-.access-grid tbody tr.active-row .row-head {
+.acaciadb-grid tbody tr.active-row .row-head {
     background: #ffd85b !important;
 }
 
-.access-grid td.selected-cell {
+.acaciadb-grid td.selected-cell {
     position: relative;
     outline: 2px solid #111;
     outline-offset: -2px;
     box-shadow: inset 0 0 0 1px #fff;
 }
 
-.access-grid .new-record-cell {
+.acaciadb-grid .new-record-cell {
     text-align: right;
 }
 
@@ -729,15 +731,15 @@
     font-weight: 400;
 }
 
-.access-grid th[data-header-column] {
+.acaciadb-grid th[data-header-column] {
     cursor: move;
 }
 
-.access-grid th.column-dragging {
+.acaciadb-grid th.column-dragging {
     opacity: .58;
 }
 
-.access-grid th.column-drop-target {
+.acaciadb-grid th.column-drop-target {
     box-shadow: inset 3px 0 0 #2b78bd;
 }
 
@@ -762,7 +764,7 @@
     min-width: 118px;
 }
 
-.access-grid .new-cell {
+.acaciadb-grid .new-cell {
     background: #050505;
     color: white;
     padding: 1px 4px;
@@ -817,6 +819,8 @@
     font-size: 12px;
     color: #222;
     white-space: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
 }
 
 .record-bar button {
@@ -942,7 +946,7 @@
     width: min(610px, calc(100vw - 28px));
 }
 
-.column-history-dialog .access-dialog-body {
+.column-history-dialog .acaciadb-dialog-body {
     display: grid;
     gap: 10px;
 }
@@ -1005,7 +1009,7 @@
     color: #4f7fac;
 }
 
-.access-dialog {
+.acaciadb-dialog {
     width: min(500px, calc(100vw - 40px));
     border: 1px solid #7e8794;
     border-radius: 2px;
@@ -1015,21 +1019,21 @@
     box-shadow: 0 18px 48px rgba(0,0,0,.32);
 }
 
-.access-dialog[open] {
+.acaciadb-dialog[open] {
     display: block;
 }
 
-.access-dialog::backdrop {
+.acaciadb-dialog::backdrop {
     background: rgba(0,0,0,.28);
 }
 
-.access-dialog form {
+.acaciadb-dialog form {
     display: grid;
     margin: 0;
     padding: 0;
 }
 
-.access-dialog-title {
+.acaciadb-dialog-title {
     display: flex;
     min-height: 34px;
     align-items: center;
@@ -1040,22 +1044,22 @@
     font-weight: 600;
 }
 
-.access-dialog-title span {
+.acaciadb-dialog-title span {
     padding: 8px 12px;
 }
 
-.access-dialog-title button {
+.acaciadb-dialog-title button {
     display: grid;
     height: 34px;
     width: 36px;
     place-items: center;
 }
 
-.access-dialog-title button:hover {
+.acaciadb-dialog-title button:hover {
     background: #7f2026;
 }
 
-.access-dialog-body {
+.acaciadb-dialog-body {
     display: grid;
     gap: 8px;
     padding: 16px;
@@ -1077,9 +1081,9 @@
     font-weight: 600;
 }
 
-.access-dialog input,
-.access-dialog select,
-.access-dialog textarea {
+.acaciadb-dialog input,
+.acaciadb-dialog select,
+.acaciadb-dialog textarea {
     height: 30px;
     min-width: 0;
     border: 1px solid #9faab7;
@@ -1088,14 +1092,14 @@
     outline: 0;
 }
 
-.access-dialog textarea {
+.acaciadb-dialog textarea {
     height: auto;
     resize: vertical;
 }
 
-.access-dialog input:focus,
-.access-dialog select:focus,
-.access-dialog textarea:focus {
+.acaciadb-dialog input:focus,
+.acaciadb-dialog select:focus,
+.acaciadb-dialog textarea:focus {
     border-color: #2b78bd;
     box-shadow: 0 0 0 1px #2b78bd inset;
 }
@@ -1510,6 +1514,37 @@
     text-align: left;
 }
 
+.record-page-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+}
+
+.record-page-divider {
+    width: 1px;
+    height: 17px;
+    margin: 0 3px;
+    background: #c6c6c6;
+}
+
+.record-page-controls label {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    color: #444;
+}
+
+.record-page-controls input {
+    width: 64px;
+    text-align: right;
+}
+
+.record-total {
+    min-width: 104px;
+    color: #444;
+    font-weight: 600;
+}
+
 .lookup-listbox button.active {
     background: #000;
     color: white;
@@ -1616,6 +1651,16 @@
     border-bottom: 1px solid #a9b3bf;
     background: #dce3eb;
     font-weight: 400;
+}
+
+.acaciadb-grid thead {
+    position: sticky;
+    top: 0;
+    z-index: 7;
+}
+
+.acaciadb-grid thead th {
+    box-shadow: 0 1px 0 #aeb9c5;
 }
 
 .lookup-preview-grid td {

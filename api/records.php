@@ -1,6 +1,6 @@
 <?php
 
-require_once __DIR__ . '/../lib/access_data.php';
+require_once __DIR__ . '/../lib/acaciadb_data.php';
 
 function record_request(): array
 {
@@ -92,13 +92,13 @@ function ensure_autonumber_primary_key(mysqli $db, string $tableName, string $pr
     );
 }
 
-function refresh_table_response(mysqli $db, string $tableName, ?array $row = null): void
+function refresh_table_response(mysqli $db, string $tableName, ?array $row = null, int $skip = 0, int $limit = 500): void
 {
     json_response([
         'ok' => true,
         'table' => $tableName,
         'row' => $row,
-        'payload' => fetch_table_payload($db, $tableName, true),
+        'payload' => fetch_table_payload($db, $tableName, true, $skip, $limit),
     ]);
 }
 
@@ -106,7 +106,7 @@ function record_history_entry(mysqli $db, string $tableName, string $columnName,
 {
     ensure_column_history_storage($db);
     $stmt = $db->prepare(
-        'INSERT INTO access_column_history (table_name, column_name, primary_key_value, value_text)
+        'INSERT INTO acaciadb_column_history (table_name, column_name, primary_key_value, value_text)
          VALUES (?, ?, ?, ?)'
     );
     $primaryKeyText = (string) $primaryKeyValue;
@@ -120,7 +120,7 @@ function fetch_record_history(mysqli $db, string $tableName, string $columnName,
     ensure_column_history_storage($db);
     $stmt = $db->prepare(
         'SELECT value_text, changed_at
-         FROM access_column_history
+         FROM acaciadb_column_history
          WHERE table_name = ?
            AND column_name = ?
            AND primary_key_value = ?
@@ -189,6 +189,10 @@ try {
     $db = db_connect();
     $request = record_request();
     $action = (string) ($request['action'] ?? '');
+    [$pageSkip, $pageLimit] = normalize_table_page(
+        (int) ($request['skip'] ?? 0),
+        (int) ($request['limit'] ?? 500)
+    );
     $resolvedTable = resolve_table_name($db, (string) ($request['table'] ?? ''));
 
     if (!$resolvedTable) {
@@ -287,7 +291,7 @@ try {
         }
 
         $updatedRow = fetch_table_row_by_primary_key($db, $resolvedTable, $primaryKey, $primaryKeyValue);
-        refresh_table_response($db, $resolvedTable, $updatedRow);
+        refresh_table_response($db, $resolvedTable, $updatedRow, $pageSkip, $pageLimit);
         exit;
     }
 
@@ -307,7 +311,7 @@ try {
             ' LIMIT 1'
         );
 
-        refresh_table_response($db, $resolvedTable, null);
+        refresh_table_response($db, $resolvedTable, null, $pageSkip, $pageLimit);
         exit;
     }
 
@@ -352,7 +356,11 @@ try {
         ? fetch_table_row_by_primary_key($db, $resolvedTable, $primaryKey, $insertId)
         : null;
 
-    refresh_table_response($db, $resolvedTable, $insertedRow);
+    $totalRows = fetch_table_row_count($db, $resolvedTable);
+    $insertPageSkip = $totalRows > $pageSkip + $pageLimit
+        ? (int) (floor(max(0, $totalRows - 1) / $pageLimit) * $pageLimit)
+        : $pageSkip;
+    refresh_table_response($db, $resolvedTable, $insertedRow, $insertPageSkip, $pageLimit);
 } catch (Throwable $exception) {
     json_response(['ok' => false, 'error' => $exception->getMessage()], 400);
 }

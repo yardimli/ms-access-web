@@ -74,31 +74,31 @@ document.addEventListener('click', async event => {
 
     const captionCommand = event.target.closest('[data-command="caption"]');
     if (captionCommand && isTableDatasheetView(currentView)) {
-        await window.accessActiveTableController?.openColumnDialog?.();
+        await window.acaciadbActiveTableController?.openColumnDialog?.();
         return;
     }
 
     const defaultValueCommand = event.target.closest('[data-command="default"]');
     if (defaultValueCommand && isTableDatasheetView(currentView) && !defaultValueCommand.disabled) {
-        await window.accessActiveTableController?.openDefaultValueBuilder?.();
+        await window.acaciadbActiveTableController?.openDefaultValueBuilder?.();
         return;
     }
 
     const expressionCommand = event.target.closest('[data-command="expression"]');
     if (expressionCommand && isTableDatasheetView(currentView) && !expressionCommand.disabled) {
-        await window.accessActiveTableController?.openCalculatedExpressionBuilder?.();
+        await window.acaciadbActiveTableController?.openCalculatedExpressionBuilder?.();
         return;
     }
 
     const lookupCommand = event.target.closest('[data-command="lookup"]');
     if (lookupCommand && isTableDatasheetView(currentView) && !lookupCommand.disabled && !lookupCommand.closest('.fields-add-delete')) {
-        await window.accessActiveTableController?.modifyActiveLookup?.();
+        await window.acaciadbActiveTableController?.modifyActiveLookup?.();
         return;
     }
 
     const validationToggle = event.target.closest('[data-command="required"], [data-command="unique"], [data-command="indexed"]');
     if (validationToggle && isTableDatasheetView(currentView)) {
-        await window.accessActiveTableController?.toggleColumnValidation?.(validationToggle.dataset.command);
+        await window.acaciadbActiveTableController?.toggleColumnValidation?.(validationToggle.dataset.command);
         return;
     }
 
@@ -124,16 +124,16 @@ document.addEventListener('click', async event => {
             'yes-no': 'Yes/No'
         }[addDeleteCommand.dataset.command];
         if (addDeleteCommand.dataset.command === 'delete') {
-            await window.accessActiveTableController?.deleteActiveColumn?.();
+            await window.acaciadbActiveTableController?.deleteActiveColumn?.();
         } else {
-            await window.accessActiveTableController?.addColumnFromType?.(commandType);
+            await window.acaciadbActiveTableController?.addColumnFromType?.(commandType);
         }
         return;
     }
 
     const formatButton = event.target.closest('[data-format-command]');
     if (formatButton && isTableDatasheetView(currentView) && !formatButton.disabled) {
-        await window.accessActiveTableController?.changeColumnFormat?.({ command: formatButton.dataset.formatCommand });
+        await window.acaciadbActiveTableController?.changeColumnFormat?.({ command: formatButton.dataset.formatCommand });
         return;
     }
 
@@ -145,7 +145,7 @@ document.addEventListener('click', async event => {
 
     const moreFieldsItem = event.target.closest('[data-more-field]');
     if (moreFieldsItem) {
-        await window.accessActiveTableController?.addColumnFromType?.(moreFieldsItem.dataset.moreField);
+        await window.acaciadbActiveTableController?.addColumnFromType?.(moreFieldsItem.dataset.moreField);
         closeMoreFieldsMenu();
         return;
     }
@@ -158,7 +158,7 @@ document.addEventListener('click', async event => {
 
     const calculatedField = event.target.closest('[data-calculated-field]');
     if (calculatedField) {
-        await window.accessActiveTableController?.addColumnFromType?.('Calculated Field', { calculatedResultType: calculatedField.dataset.calculatedField });
+        await window.acaciadbActiveTableController?.addColumnFromType?.('Calculated Field', { calculatedResultType: calculatedField.dataset.calculatedField });
         closeMoreFieldsMenu();
         return;
     }
@@ -172,15 +172,15 @@ document.addEventListener('click', async event => {
         const item = memoMenuItem.dataset.memoMenuItem;
         closeMemoMenu();
         if (item === 'appendOnly') {
-            await window.accessActiveTableController?.toggleMemoSetting?.('appendOnly');
+            await window.acaciadbActiveTableController?.toggleMemoSetting?.('appendOnly');
             return;
         }
         if (item === 'htmlText') {
-            await window.accessActiveTableController?.toggleMemoSetting?.('htmlText');
+            await window.acaciadbActiveTableController?.toggleMemoSetting?.('htmlText');
             return;
         }
         if (item === 'history') {
-            await window.accessActiveTableController?.showColumnHistory?.();
+            await window.acaciadbActiveTableController?.showColumnHistory?.();
             return;
         }
     }
@@ -191,10 +191,10 @@ document.addEventListener('click', async event => {
         closeValidationMenu();
         if (item === 'rule') {
             try {
-                const context = window.accessActiveTableController?.getExpressionContext?.() || {};
+                const context = window.acaciadbActiveTableController?.getExpressionContext?.() || {};
                 const result = await window.ExpressionBuilder?.open?.(context);
                 if (result !== null && result !== undefined) {
-                    await window.accessActiveTableController?.setValidationRule?.(result.expression, result.javascript, result.interpretNatural);
+                    await window.acaciadbActiveTableController?.setValidationRule?.(result.expression, result.javascript, result.interpretNatural);
                 }
             } catch (error) {
                 status.textContent = error.message || 'Expression Builder could not open';
@@ -248,6 +248,10 @@ document.addEventListener('click', async event => {
 
     const ribbonTab = event.target.closest('.ribbon-tab');
     if (ribbonTab) {
+        if (ribbonTab.dataset.ribbon === 'file') {
+            openFileBackstage('home');
+            return;
+        }
         activateRibbonTab(ribbonTab.dataset.ribbon);
         return;
     }
@@ -280,12 +284,12 @@ document.addEventListener('click', async event => {
 document.addEventListener('change', async event => {
     const typeSelect = event.target.closest('[data-field-data-type]');
     if (typeSelect && isTableDatasheetView(currentView)) {
-        await window.accessActiveTableController?.changeColumnType?.(typeSelect.value);
+        await window.acaciadbActiveTableController?.changeColumnType?.(typeSelect.value);
     }
 
     const formatSelect = event.target.closest('[data-field-format]');
     if (formatSelect && isTableDatasheetView(currentView)) {
-        await window.accessActiveTableController?.changeColumnFormat?.({ format: formatSelect.value });
+        await window.acaciadbActiveTableController?.changeColumnFormat?.({ format: formatSelect.value });
     }
 });
 
@@ -334,6 +338,9 @@ async function bootstrapApp() {
         const db = await getDatabase();
         configureObjectMaps(db);
         renderObjectList(db);
+        const databaseTitle = document.querySelector('#database-title');
+        if (databaseTitle) databaseTitle.textContent = `${db.database || 'AcaciaDB'} : AcaciaDB`;
+        document.title = `${db.database || 'Database'} - AcaciaDB`;
 
         const requestedView = app.dataset.initialView || '';
         const firstTableView = Object.keys(tableViewPairs)[0];

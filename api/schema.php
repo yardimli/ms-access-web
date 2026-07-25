@@ -1,12 +1,21 @@
 <?php
 
-require_once __DIR__ . '/../lib/access_data.php';
+require_once __DIR__ . '/../lib/acaciadb_data.php';
 
 function schema_request(): array
 {
     $raw = file_get_contents('php://input') ?: '';
     $data = json_decode($raw, true);
     return is_array($data) ? $data : $_POST;
+}
+
+function schema_table_payload(mysqli $db, string $tableName, array $request): array
+{
+    [$skip, $limit] = normalize_table_page(
+        (int) ($request['skip'] ?? 0),
+        (int) ($request['limit'] ?? 500)
+    );
+    return fetch_table_payload($db, $tableName, true, $skip, $limit);
 }
 
 function validate_field_name(string $name): string
@@ -20,7 +29,7 @@ function validate_field_name(string $name): string
     return $name;
 }
 
-function mysql_type_for_access_type(string $type): string
+function mysql_type_for_acaciadb_type(string $type): string
 {
     return match ($type) {
         'Number' => 'INT NULL',
@@ -34,12 +43,12 @@ function mysql_type_for_access_type(string $type): string
     };
 }
 
-function mysql_column_type_for_access_type(string $type): string
+function mysql_column_type_for_acaciadb_type(string $type): string
 {
-    return trim(str_replace([' NULL DEFAULT 0', ' NULL'], '', mysql_type_for_access_type($type)));
+    return trim(str_replace([' NULL DEFAULT 0', ' NULL'], '', mysql_type_for_acaciadb_type($type)));
 }
 
-function allowed_access_column_types(): array
+function allowed_acaciadb_column_types(): array
 {
     return [
         'Short Text',
@@ -69,14 +78,14 @@ function allowed_access_column_types(): array
     ];
 }
 
-function validate_access_column_type(string $type): string
+function validate_acaciadb_column_type(string $type): string
 {
     $type = trim($type);
     if ($type === 'Date & Time') {
         $type = 'Date/Time';
     }
-    if (!in_array($type, allowed_access_column_types(), true)) {
-        throw new RuntimeException('Unsupported Access data type.');
+    if (!in_array($type, allowed_acaciadb_column_types(), true)) {
+        throw new RuntimeException('Unsupported AcaciaDB data type.');
     }
     return $type;
 }
@@ -84,41 +93,41 @@ function validate_access_column_type(string $type): string
 function quick_start_definition(string $type): array
 {
     return match ($type) {
-        'Address' => ['accessType' => 'Short Text', 'mysqlType' => 'VARCHAR(255)', 'friendlyName' => 'Address'],
-        'Category' => ['accessType' => 'Lookup & Relationship', 'mysqlType' => 'VARCHAR(255)', 'friendlyName' => 'Category', 'lookup' => [
+        'Address' => ['acaciadbType' => 'Short Text', 'mysqlType' => 'VARCHAR(255)', 'friendlyName' => 'Address'],
+        'Category' => ['acaciadbType' => 'Lookup & Relationship', 'mysqlType' => 'VARCHAR(255)', 'friendlyName' => 'Category', 'lookup' => [
             'kind' => 'static', 'mode' => 'single', 'valueType' => 'string', 'columns' => 1,
             'keyColumn' => 'Col1', 'displayColumns' => ['Col1'], 'limitToList' => true,
             'createdBy' => 'quickStart', 'source' => ['Hardware', 'Software', 'Service', 'Other']
         ]],
-        'Name' => ['accessType' => 'Short Text', 'mysqlType' => 'VARCHAR(255)', 'friendlyName' => 'Name'],
-        'Payment Type' => ['accessType' => 'Lookup & Relationship', 'mysqlType' => 'VARCHAR(255)', 'friendlyName' => 'Payment Type', 'lookup' => [
+        'Name' => ['acaciadbType' => 'Short Text', 'mysqlType' => 'VARCHAR(255)', 'friendlyName' => 'Name'],
+        'Payment Type' => ['acaciadbType' => 'Lookup & Relationship', 'mysqlType' => 'VARCHAR(255)', 'friendlyName' => 'Payment Type', 'lookup' => [
             'kind' => 'static', 'mode' => 'single', 'valueType' => 'integer', 'columns' => 2,
             'keyColumn' => 'Col1', 'displayColumns' => ['Col2'], 'limitToList' => true,
             'createdBy' => 'quickStart', 'source' => [['key' => 1, 'value' => 'Cash'], ['key' => 2, 'value' => 'Credit Card'], ['key' => 3, 'value' => 'Wire Transfer']]
         ]],
-        'Phone' => ['accessType' => 'Short Text', 'mysqlType' => 'VARCHAR(40)', 'friendlyName' => 'Phone'],
-        'Priority' => ['accessType' => 'Lookup & Relationship', 'mysqlType' => 'INT', 'friendlyName' => 'Priority', 'lookup' => [
+        'Phone' => ['acaciadbType' => 'Short Text', 'mysqlType' => 'VARCHAR(40)', 'friendlyName' => 'Phone'],
+        'Priority' => ['acaciadbType' => 'Lookup & Relationship', 'mysqlType' => 'INT', 'friendlyName' => 'Priority', 'lookup' => [
             'kind' => 'static', 'mode' => 'single', 'valueType' => 'integer', 'columns' => 2,
             'keyColumn' => 'Col1', 'displayColumns' => ['Col2'], 'limitToList' => true,
             'createdBy' => 'quickStart', 'source' => [['key' => 1, 'value' => 'Low'], ['key' => 2, 'value' => 'Normal'], ['key' => 3, 'value' => 'High']]
         ]],
-        'Start and End Dates' => ['accessType' => 'Short Text', 'mysqlType' => 'VARCHAR(255)', 'friendlyName' => 'Start and End Dates'],
-        'Status' => ['accessType' => 'Lookup & Relationship', 'mysqlType' => 'VARCHAR(80)', 'friendlyName' => 'Status', 'lookup' => [
+        'Start and End Dates' => ['acaciadbType' => 'Short Text', 'mysqlType' => 'VARCHAR(255)', 'friendlyName' => 'Start and End Dates'],
+        'Status' => ['acaciadbType' => 'Lookup & Relationship', 'mysqlType' => 'VARCHAR(80)', 'friendlyName' => 'Status', 'lookup' => [
             'kind' => 'static', 'mode' => 'single', 'valueType' => 'string', 'columns' => 1,
             'keyColumn' => 'Col1', 'displayColumns' => ['Col1'], 'limitToList' => true,
             'createdBy' => 'quickStart', 'source' => ['New', 'In Progress', 'Blocked', 'Done']
         ]],
-        'Tag' => ['accessType' => 'Lookup & Relationship', 'mysqlType' => 'TEXT', 'friendlyName' => 'Tag', 'lookup' => [
+        'Tag' => ['acaciadbType' => 'Lookup & Relationship', 'mysqlType' => 'TEXT', 'friendlyName' => 'Tag', 'lookup' => [
             'kind' => 'static', 'mode' => 'multiple', 'valueType' => 'string', 'columns' => 1,
             'keyColumn' => 'Col1', 'displayColumns' => ['Col1'], 'limitToList' => true,
             'createdBy' => 'quickStart', 'source' => ['Important', 'Follow Up', 'Internal', 'External']
         ]],
-        'Calculated Field' => ['accessType' => 'Calculated Field', 'mysqlType' => 'VARCHAR(255)', 'friendlyName' => 'Calculated Field'],
-        default => ['accessType' => $type, 'mysqlType' => mysql_column_type_for_access_type($type), 'friendlyName' => ''],
+        'Calculated Field' => ['acaciadbType' => 'Calculated Field', 'mysqlType' => 'VARCHAR(255)', 'friendlyName' => 'Calculated Field'],
+        default => ['acaciadbType' => $type, 'mysqlType' => mysql_column_type_for_acaciadb_type($type), 'friendlyName' => ''],
     };
 }
 
-function allowed_access_formats_for_type(string $type): array
+function allowed_acaciadb_formats_for_type(string $type): array
 {
     return match ($type) {
         'Number', 'Large Number', 'Currency' => ['General Number', 'Currency', 'Euro', 'Fixed', 'Standard', 'Percent', 'Scientific'],
@@ -128,7 +137,7 @@ function allowed_access_formats_for_type(string $type): array
     };
 }
 
-function default_access_format_for_type(string $type): string
+function default_acaciadb_format_for_type(string $type): string
 {
     return match ($type) {
         'Currency' => 'Currency',
@@ -214,15 +223,15 @@ function column_definition_sql(array $column, ?string $comment = null): string
     return $sql;
 }
 
-function update_column_metadata(mysqli $db, string $tableName, string $columnName, string $friendlyName, ?string $accessType = null, ?string $mysqlType = null): void
+function update_column_metadata(mysqli $db, string $tableName, string $columnName, string $friendlyName, ?string $acaciadbType = null, ?string $mysqlType = null): void
 {
     $metadata = fetch_table_metadata($db, $tableName);
     $metadata['columns'] ??= [];
     $metadata['columns'][$columnName] ??= [];
     $metadata['columns'][$columnName]['friendlyName'] = trim($friendlyName);
-    if ($accessType !== null) {
-        $metadata['columns'][$columnName]['accessType'] = $accessType;
-        $metadata['columns'][$columnName]['accessFormat'] = default_access_format_for_type($accessType);
+    if ($acaciadbType !== null) {
+        $metadata['columns'][$columnName]['acaciadbType'] = $acaciadbType;
+        $metadata['columns'][$columnName]['acaciadbFormat'] = default_acaciadb_format_for_type($acaciadbType);
         $metadata['columns'][$columnName]['decimalPlaces'] = 2;
     }
     if ($mysqlType !== null) {
@@ -416,7 +425,7 @@ function fetch_column_key(mysqli $db, string $tableName, string $columnName): st
 
 function schema_index_name(string $columnName, bool $unique): string
 {
-    $prefix = $unique ? 'ux_access_' : 'ix_access_';
+    $prefix = $unique ? 'ux_acaciadb_' : 'ix_acaciadb_';
     return substr($prefix . preg_replace('/[^A-Za-z0-9_]+/', '_', $columnName), 0, 60);
 }
 
@@ -464,7 +473,7 @@ function column_has_duplicates(mysqli $db, string $tableName, string $columnName
 
 function verify_column_type_change(mysqli $db, string $tableName, string $columnName, string $newType, array $definition): void
 {
-    $tempName = 'tmp_access_type_' . bin2hex(random_bytes(6));
+    $tempName = 'tmp_acaciadb_type_' . bin2hex(random_bytes(6));
     $testDefinition = $definition;
     $testDefinition['column_default'] = null;
     $testDefinition['extra'] = '';
@@ -493,13 +502,13 @@ try {
 
     if ($action === 'addColumn') {
         $fieldName = validate_field_name((string) ($request['name'] ?? ''));
-        $type = validate_access_column_type((string) ($request['type'] ?? 'Short Text'));
+        $type = validate_acaciadb_column_type((string) ($request['type'] ?? 'Short Text'));
         $friendlyName = trim((string) ($request['friendlyName'] ?? ''));
         $comment = trim((string) ($request['comment'] ?? ''));
         $afterColumn = trim((string) ($request['afterColumn'] ?? ''));
         $quickDefinition = quick_start_definition($type);
-        $storageAccessType = (string) ($quickDefinition['accessType'] ?? $type);
-        $storageMysqlType = (string) ($quickDefinition['mysqlType'] ?? mysql_column_type_for_access_type($storageAccessType));
+        $storageAcaciaDBType = (string) ($quickDefinition['acaciadbType'] ?? $type);
+        $storageMysqlType = (string) ($quickDefinition['mysqlType'] ?? mysql_column_type_for_acaciadb_type($storageAcaciaDBType));
         if ($friendlyName === '') {
             $friendlyName = (string) ($quickDefinition['friendlyName'] ?? '');
         }
@@ -522,7 +531,7 @@ try {
             ($comment !== '' ? " COMMENT '" . addslashes($comment) . "'" : '') .
             $afterClause
         );
-        update_column_metadata($db, $resolvedTable, $fieldName, $friendlyName, $storageAccessType, $storageMysqlType);
+        update_column_metadata($db, $resolvedTable, $fieldName, $friendlyName, $storageAcaciaDBType, $storageMysqlType);
         if (isset($quickDefinition['lookup'])) {
             $metadata = fetch_table_metadata($db, $resolvedTable);
             $metadata['columns'][$fieldName]['lookup'] = $quickDefinition['lookup'];
@@ -532,7 +541,7 @@ try {
         json_response([
             'ok' => true,
             'table' => $resolvedTable,
-            'payload' => fetch_table_payload($db, $resolvedTable, true),
+            'payload' => schema_table_payload($db, $resolvedTable, $request),
         ]);
         exit;
     }
@@ -582,9 +591,9 @@ try {
         $metadata['columns'] ??= [];
         $metadata['columns'][$fieldName] = array_merge($metadata['columns'][$fieldName] ?? [], [
             'friendlyName' => $friendlyName,
-            'accessType' => 'Lookup & Relationship',
+            'acaciadbType' => 'Lookup & Relationship',
             'mysqlType' => $mysqlType,
-            'accessFormat' => '',
+            'acaciadbFormat' => '',
             'decimalPlaces' => 2,
             'lookup' => $lookup,
         ]);
@@ -593,7 +602,7 @@ try {
         json_response([
             'ok' => true,
             'table' => $resolvedTable,
-            'payload' => fetch_table_payload($db, $resolvedTable, true),
+            'payload' => schema_table_payload($db, $resolvedTable, $request),
         ]);
         exit;
     }
@@ -615,14 +624,14 @@ try {
         $metadata['columns'] ??= [];
         $metadata['columns'][$columnName] ??= [];
         $metadata['columns'][$columnName]['friendlyName'] = $friendlyName;
-        $metadata['columns'][$columnName]['accessType'] = 'Lookup & Relationship';
+        $metadata['columns'][$columnName]['acaciadbType'] = 'Lookup & Relationship';
         $metadata['columns'][$columnName]['lookup'] = $lookup;
         save_table_metadata($db, $resolvedTable, $metadata);
 
         json_response([
             'ok' => true,
             'table' => $resolvedTable,
-            'payload' => fetch_table_payload($db, $resolvedTable, true),
+            'payload' => schema_table_payload($db, $resolvedTable, $request),
         ]);
         exit;
     }
@@ -644,7 +653,7 @@ try {
         json_response([
             'ok' => true,
             'table' => $resolvedTable,
-            'payload' => fetch_table_payload($db, $resolvedTable, true),
+            'payload' => schema_table_payload($db, $resolvedTable, $request),
         ]);
         exit;
     }
@@ -662,7 +671,7 @@ try {
         $metadata = fetch_table_metadata($db, $resolvedTable);
         $metadata['columns'] ??= [];
         $metadata['columns'][$columnName] ??= [];
-        $metadata['columns'][$columnName]['accessType'] = 'Calculated Field';
+        $metadata['columns'][$columnName]['acaciadbType'] = 'Calculated Field';
         $metadata['columns'][$columnName]['calculatedExpression'] = $expression;
         $metadata['columns'][$columnName]['calculatedJavascript'] = $javascript;
         $metadata['columns'][$columnName]['calculatedInterpretNatural'] = $interpretNatural;
@@ -671,7 +680,7 @@ try {
         json_response([
             'ok' => true,
             'table' => $resolvedTable,
-            'payload' => fetch_table_payload($db, $resolvedTable, true),
+            'payload' => schema_table_payload($db, $resolvedTable, $request),
         ]);
         exit;
     }
@@ -705,7 +714,7 @@ try {
         json_response([
             'ok' => true,
             'table' => $resolvedTable,
-            'payload' => fetch_table_payload($db, $resolvedTable, true),
+            'payload' => schema_table_payload($db, $resolvedTable, $request),
         ]);
         exit;
     }
@@ -743,7 +752,7 @@ try {
         json_response([
             'ok' => true,
             'table' => $resolvedTable,
-            'payload' => fetch_table_payload($db, $resolvedTable, true),
+            'payload' => schema_table_payload($db, $resolvedTable, $request),
         ]);
         exit;
     }
@@ -815,7 +824,7 @@ try {
         json_response([
             'ok' => true,
             'table' => $resolvedTable,
-            'payload' => fetch_table_payload($db, $resolvedTable, true),
+            'payload' => schema_table_payload($db, $resolvedTable, $request),
         ]);
         exit;
     }
@@ -849,7 +858,7 @@ try {
         json_response([
             'ok' => true,
             'table' => $resolvedTable,
-            'payload' => fetch_table_payload($db, $resolvedTable, true),
+            'payload' => schema_table_payload($db, $resolvedTable, $request),
         ]);
         exit;
     }
@@ -872,8 +881,8 @@ try {
             }
         }
 
-        $accessType = (string) ($column['accessType'] ?? $column['type'] ?? '');
-        if (!in_array($accessType, ['Long Text', 'HTML Text', 'Rich Text'], true)) {
+        $acaciadbType = (string) ($column['acaciadbType'] ?? $column['type'] ?? '');
+        if (!in_array($acaciadbType, ['Long Text', 'HTML Text', 'Rich Text'], true)) {
             throw new RuntimeException('Memo Settings are only available for Long Text fields.');
         }
 
@@ -885,7 +894,7 @@ try {
             ensure_column_history_storage($db);
             $metadata['columns'][$columnName]['appendOnly'] = $enabled;
         } elseif ($setting === 'htmlText') {
-            $metadata['columns'][$columnName]['accessType'] = $enabled ? 'HTML Text' : 'Long Text';
+            $metadata['columns'][$columnName]['acaciadbType'] = $enabled ? 'HTML Text' : 'Long Text';
         } else {
             throw new RuntimeException('Unsupported Memo Setting.');
         }
@@ -895,7 +904,7 @@ try {
         json_response([
             'ok' => true,
             'table' => $resolvedTable,
-            'payload' => fetch_table_payload($db, $resolvedTable, true),
+            'payload' => schema_table_payload($db, $resolvedTable, $request),
         ]);
         exit;
     }
@@ -918,41 +927,41 @@ try {
             }
         }
 
-        $accessType = (string) ($column['accessType'] ?? $column['type'] ?? 'Short Text');
-        $allowedFormats = allowed_access_formats_for_type($accessType);
+        $acaciadbType = (string) ($column['acaciadbType'] ?? $column['type'] ?? 'Short Text');
+        $allowedFormats = allowed_acaciadb_formats_for_type($acaciadbType);
         if (!$allowedFormats) {
             throw new RuntimeException('This field type does not support a Format setting.');
         }
 
         if ($format === '') {
-            $format = default_access_format_for_type($accessType);
+            $format = default_acaciadb_format_for_type($acaciadbType);
         }
 
         if (!in_array($format, $allowedFormats, true)) {
-            throw new RuntimeException('Unsupported format for ' . $accessType . '.');
+            throw new RuntimeException('Unsupported format for ' . $acaciadbType . '.');
         }
 
         $metadata = fetch_table_metadata($db, $resolvedTable);
         $metadata['columns'] ??= [];
         $metadata['columns'][$columnName] ??= [];
-        $metadata['columns'][$columnName]['accessType'] = $accessType;
+        $metadata['columns'][$columnName]['acaciadbType'] = $acaciadbType;
         $metadata['columns'][$columnName]['mysqlType'] = (string) ($column['actualMysqlType'] ?? $column['mysqlType'] ?? '');
-        $metadata['columns'][$columnName]['accessFormat'] = $format;
+        $metadata['columns'][$columnName]['acaciadbFormat'] = $format;
         $metadata['columns'][$columnName]['decimalPlaces'] = $decimalPlaces;
         save_table_metadata($db, $resolvedTable, $metadata);
 
         json_response([
             'ok' => true,
             'table' => $resolvedTable,
-            'payload' => fetch_table_payload($db, $resolvedTable, true),
+            'payload' => schema_table_payload($db, $resolvedTable, $request),
         ]);
         exit;
     }
 
     if ($action === 'setColumnType') {
         $columnName = validate_field_name((string) ($request['column'] ?? ''));
-        $accessType = validate_access_column_type((string) ($request['accessType'] ?? $request['type'] ?? 'Short Text'));
-        $newType = mysql_column_type_for_access_type($accessType);
+        $acaciadbType = validate_acaciadb_column_type((string) ($request['acaciadbType'] ?? $request['type'] ?? 'Short Text'));
+        $newType = mysql_column_type_for_acaciadb_type($acaciadbType);
 
         if (!column_exists($db, $resolvedTable, $columnName)) {
             throw new RuntimeException('Field was not found.');
@@ -979,16 +988,16 @@ try {
         $metadata = fetch_table_metadata($db, $resolvedTable);
         $metadata['columns'] ??= [];
         $metadata['columns'][$columnName] ??= [];
-        $metadata['columns'][$columnName]['accessType'] = $accessType;
+        $metadata['columns'][$columnName]['acaciadbType'] = $acaciadbType;
         $metadata['columns'][$columnName]['mysqlType'] = $newType;
-        $metadata['columns'][$columnName]['accessFormat'] = default_access_format_for_type($accessType);
+        $metadata['columns'][$columnName]['acaciadbFormat'] = default_acaciadb_format_for_type($acaciadbType);
         $metadata['columns'][$columnName]['decimalPlaces'] = 2;
         save_table_metadata($db, $resolvedTable, $metadata);
 
         json_response([
             'ok' => true,
             'table' => $resolvedTable,
-            'payload' => fetch_table_payload($db, $resolvedTable, true),
+            'payload' => schema_table_payload($db, $resolvedTable, $request),
         ]);
         exit;
     }

@@ -10,7 +10,21 @@ function initTableViews(db) {
         const rows = tableDef?.data || [];
         const host = view.querySelector('[data-table-host]');
         const position = view.querySelector('[data-record-position]');
+        const pageSkipInput = view.querySelector('[data-page-skip]');
+        const pageLimitInput = view.querySelector('[data-page-limit]');
+        const pageTotal = view.querySelector('[data-page-total]');
+        const pagePrevious = view.querySelector('[data-page-nav="previous"]');
+        const pageNext = view.querySelector('[data-page-nav="next"]');
         let activeIndex = 0;
+        let pagination = {
+            skip: Number(tableDef?.pagination?.skip || 0),
+            limit: Number(tableDef?.pagination?.limit || 500),
+            total: Number(tableDef?.pagination?.total ?? rows.length),
+            returned: Number(tableDef?.pagination?.returned ?? rows.length),
+            hasPrevious: Boolean(tableDef?.pagination?.hasPrevious),
+            hasNext: Boolean(tableDef?.pagination?.hasNext)
+        };
+        let pageLoading = false;
         const sortState = { column: null, direction: 'none' };
         let prefs = readTablePrefs(tableName);
         let displayColumns = orderedTableColumns(tableDef, prefs);
@@ -22,8 +36,8 @@ function initTableViews(db) {
         const dirtyRows = new Map();
 
         rows.forEach((row, index) => {
-            if (row.__accessOrder === undefined) {
-                Object.defineProperty(row, '__accessOrder', {
+            if (row.__acaciadbOrder === undefined) {
+                Object.defineProperty(row, '__acaciadbOrder', {
                     value: index,
                     enumerable: false,
                     configurable: true
@@ -60,6 +74,18 @@ function initTableViews(db) {
             writeTablePrefs(tableName, prefs);
         }
 
+        function syncPagination(next = {}) {
+            pagination = { ...pagination, ...next };
+            tableDef.pagination = { ...pagination };
+            if (pageSkipInput) pageSkipInput.value = String(pagination.skip);
+            if (pageLimitInput) pageLimitInput.value = String(pagination.limit);
+            if (pageTotal) pageTotal.textContent = `Total rows: ${pagination.total.toLocaleString()}`;
+            if (pagePrevious) pagePrevious.disabled = pageLoading || !pagination.hasPrevious;
+            if (pageNext) pageNext.disabled = pageLoading || !pagination.hasNext;
+            if (pageSkipInput) pageSkipInput.disabled = pageLoading;
+            if (pageLimitInput) pageLimitInput.disabled = pageLoading;
+        }
+
         function updateActiveRow() {
             host.querySelectorAll('tbody tr').forEach(row => row.classList.remove('active-row'));
             const row = cursorRowIndex >= rows.length
@@ -68,7 +94,8 @@ function initTableViews(db) {
             row?.classList.add('active-row');
             if (position) {
                 activeIndex = Math.max(0, Math.min(cursorRowIndex, Math.max(rows.length - 1, 0)));
-                position.value = `${rows.length ? activeIndex + 1 : 0} of ${rows.length}`;
+                const globalPosition = rows.length ? pagination.skip + activeIndex + 1 : 0;
+                position.value = `${globalPosition} of ${pagination.total}`;
             }
         }
 
@@ -103,8 +130,8 @@ function initTableViews(db) {
 
         function assignRowOrderMetadata() {
             rows.forEach((nextRow, index) => {
-                if (nextRow.__accessOrder === undefined) {
-                    Object.defineProperty(nextRow, '__accessOrder', {
+                if (nextRow.__acaciadbOrder === undefined) {
+                    Object.defineProperty(nextRow, '__acaciadbOrder', {
                         value: index,
                         enumerable: false,
                         configurable: true
@@ -324,8 +351,8 @@ function initTableViews(db) {
                 if (Array.isArray(response.payload?.data)) {
                     rows.splice(0, rows.length, ...response.payload.data);
                     rows.forEach((nextRow, index) => {
-                        if (nextRow.__accessOrder === undefined) {
-                            Object.defineProperty(nextRow, '__accessOrder', {
+                        if (nextRow.__acaciadbOrder === undefined) {
+                            Object.defineProperty(nextRow, '__acaciadbOrder', {
                                 value: index,
                                 enumerable: false,
                                 configurable: true
@@ -405,7 +432,7 @@ function initTableViews(db) {
             if (!cell) {
                 return;
             }
-            host.dispatchEvent(new CustomEvent('access-edit-cell', { detail: { cell } }));
+            host.dispatchEvent(new CustomEvent('acaciadb-edit-cell', { detail: { cell } }));
         }
 
         function columnByName(name) {
@@ -416,12 +443,12 @@ function initTableViews(db) {
             return Boolean(
                 column?.primaryKey ||
                 column?.lookup ||
-                column?.accessType === 'Calculated Field' ||
+                column?.acaciadbType === 'Calculated Field' ||
                 column?.calculatedJavascript
             );
         }
 
-        function addableAccessType(type) {
+        function addableAcaciaDBType(type) {
             const normalized = type === 'Date & Time' ? 'Date/Time' : type;
             const numberFormats = new Set(['General', 'Fixed', 'Standard', 'Scientific']);
             const dateFormats = new Set(['Short Date', 'Medium Date', 'Long Date', 'Time am/pm', 'Medium Time', 'Time 24hour']);
@@ -451,6 +478,61 @@ function initTableViews(db) {
             if (Array.isArray(payload.data)) {
                 rows.splice(0, rows.length, ...payload.data);
                 assignRowOrderMetadata();
+            }
+            if (payload.pagination) {
+                syncPagination(payload.pagination);
+            }
+        }
+
+        async function loadTablePage(skip, limit) {
+            if (pageLoading) {
+                return false;
+            }
+
+            const requestedSkip = Math.max(0, Number.parseInt(skip, 10) || 0);
+            const requestedLimit = Math.max(1, Math.min(2000, Number.parseInt(limit, 10) || 500));
+            pageLoading = true;
+            syncPagination();
+            status.textContent = 'Loading records...';
+
+            try {
+                const viewId = `table-${objectSlug(tableName)}`;
+                const response = await fetch(`api/view.php?view=${encodeURIComponent(viewId)}&skip=${requestedSkip}&limit=${requestedLimit}`, {
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                    cache: 'no-store'
+                });
+                const data = await response.json();
+                if (!response.ok || !data.ok) {
+                    throw new Error(data.error || 'Unable to load table records.');
+                }
+
+                const nextTables = data.view?.data?.tables || {};
+                const resolvedName = Object.keys(nextTables).find(name => name.toLowerCase() === tableName.toLowerCase());
+                const nextTable = resolvedName ? nextTables[resolvedName] : null;
+                if (!nextTable) {
+                    throw new Error('The requested table page was not returned.');
+                }
+
+                applyTablePayload(nextTable);
+                insertDraft = {};
+                dirtyRows.clear();
+                cursorRowIndex = 0;
+                cursorColumnName = displayColumns[0]?.name || cursorColumnName;
+                renderTable();
+                updateCellCursor();
+                host.scrollTop = 0;
+                status.textContent = `Loaded ${rows.length.toLocaleString()} of ${pagination.total.toLocaleString()} records`;
+                return true;
+            } catch (error) {
+                await showMessageDialog({
+                    title: 'Load Records Error',
+                    message: error.message,
+                    confirmText: 'OK'
+                });
+                return false;
+            } finally {
+                pageLoading = false;
+                syncPagination();
             }
         }
 
@@ -639,7 +721,7 @@ function initTableViews(db) {
 
         async function openDefaultValueBuilder() {
             const column = columnByName(activeColumnName);
-            if (!column || column.accessType === 'Calculated Field' || column.calculatedJavascript) {
+            if (!column || column.acaciadbType === 'Calculated Field' || column.calculatedJavascript) {
                 return;
             }
 
@@ -660,7 +742,7 @@ function initTableViews(db) {
 
         async function openCalculatedExpressionBuilder() {
             const column = columnByName(activeColumnName);
-            if (!column || (column.accessType !== 'Calculated Field' && !column.calculatedJavascript)) {
+            if (!column || (column.acaciadbType !== 'Calculated Field' && !column.calculatedJavascript)) {
                 return;
             }
 
@@ -709,7 +791,7 @@ function initTableViews(db) {
         }
 
         async function addColumnFromType(type = '', options = {}) {
-            const normalizedType = addableAccessType(type);
+            const normalizedType = addableAcaciaDBType(type);
             const fixedType = Boolean(normalizedType);
             const afterColumn = columnByName(cursorColumnName)?.name || columnByName(activeColumnName)?.name || '';
             if (normalizedType === 'Lookup & Relationship') {
@@ -787,7 +869,7 @@ function initTableViews(db) {
         }
 
         async function openLookupWizardForColumn(column = null, afterColumn = '', wizardOptions = {}) {
-            if (!window.AccessLookupWizard?.open) {
+            if (!window.AcaciaDBLookupWizard?.open) {
                 await showMessageDialog({
                     title: 'Lookup Wizard',
                     message: 'The Lookup Wizard could not be loaded.',
@@ -798,7 +880,7 @@ function initTableViews(db) {
 
             const overviewDb = await getDatabase();
             mergeViewData(overviewDb, { tables: { [tableName]: tableDef } });
-            const result = await window.AccessLookupWizard.open({
+            const result = await window.AcaciaDBLookupWizard.open({
                 db: overviewDb,
                 tableName,
                 tableColumns: tableDef.structure.columns,
@@ -989,9 +1071,9 @@ function initTableViews(db) {
             }
         }
 
-        async function changeColumnType(accessType) {
+        async function changeColumnType(acaciadbType) {
             const column = columnByName(activeColumnName);
-            const nextType = String(accessType || '');
+            const nextType = String(acaciadbType || '');
             if (!column || !tableDataTypes.includes(nextType)) {
                 updateFieldsRibbonState(column);
                 return;
@@ -1007,7 +1089,7 @@ function initTableViews(db) {
                 return;
             }
 
-            if ((column.accessType || column.type) === nextType) {
+            if ((column.acaciadbType || column.type) === nextType) {
                 return;
             }
 
@@ -1022,7 +1104,7 @@ function initTableViews(db) {
                     action: 'setColumnType',
                     table: tableName,
                     column: column.name,
-                    accessType: nextType
+                    acaciadbType: nextType
                 });
 
                 if (response.payload?.structure) {
@@ -1057,8 +1139,8 @@ function initTableViews(db) {
                 return;
             }
 
-            const accessType = column.accessType || column.type;
-            let nextFormat = options.format || column.accessFormat || defaultFieldFormats[accessType] || '';
+            const acaciadbType = column.acaciadbType || column.type;
+            let nextFormat = options.format || column.acaciadbFormat || defaultFieldFormats[acaciadbType] || '';
             let nextDecimalPlaces = Number.isFinite(Number(column.decimalPlaces)) ? Number(column.decimalPlaces) : 2;
 
             if (options.command === 'currency') nextFormat = 'Currency';
@@ -1109,13 +1191,13 @@ function initTableViews(db) {
 
         async function toggleMemoSetting(setting) {
             const column = columnByName(activeColumnName);
-            if (!column || !['Long Text', 'HTML Text', 'Rich Text'].includes(column.accessType || column.type)) {
+            if (!column || !['Long Text', 'HTML Text', 'Rich Text'].includes(column.acaciadbType || column.type)) {
                 return;
             }
 
             const enabled = setting === 'appendOnly'
                 ? !Boolean(column.appendOnly)
-                : !['HTML Text', 'Rich Text'].includes(column.accessType || column.type);
+                : !['HTML Text', 'Rich Text'].includes(column.acaciadbType || column.type);
 
             try {
                 status.textContent = 'Updating Memo Settings...';
@@ -1174,9 +1256,10 @@ function initTableViews(db) {
             }
         }
 
+        syncPagination(tableDef.pagination || pagination);
         renderTable();
         updateCellCursor();
-        window.accessActiveTableController = {
+        window.acaciadbActiveTableController = {
             tableName,
             openColumnDialog: () => openColumnDialog(activeColumnName),
             addColumnFromType,
@@ -1191,6 +1274,8 @@ function initTableViews(db) {
             changeColumnType,
             changeColumnFormat,
             setValidationRule,
+            getPageState: () => ({ skip: pagination.skip, limit: pagination.limit }),
+            syncPagination,
             getExpressionContext: () => {
                 const column = columnByName(activeColumnName) || tableDef.structure.columns[0] || {};
                 return {
@@ -1281,8 +1366,8 @@ function initTableViews(db) {
                 if (Array.isArray(response.payload?.data)) {
                     rows.splice(0, rows.length, ...response.payload.data);
                     rows.forEach((row, index) => {
-                        if (row.__accessOrder === undefined) {
-                            Object.defineProperty(row, '__accessOrder', {
+                        if (row.__acaciadbOrder === undefined) {
+                            Object.defineProperty(row, '__acaciadbOrder', {
                                 value: index,
                                 enumerable: false,
                                 configurable: true
@@ -1585,7 +1670,7 @@ function initTableViews(db) {
                 const onMove = moveEvent => {
                     const nextHeight = Math.max(20, Math.min(72, Math.round(startHeight + moveEvent.clientY - startY)));
                     savePrefs({ ...prefs, rowHeight: nextHeight });
-                    host.querySelector('.access-grid')?.style.setProperty('--access-row-height', `${nextHeight}px`);
+                    host.querySelector('.acaciadb-grid')?.style.setProperty('--acaciadb-row-height', `${nextHeight}px`);
                 };
 
                 const onUp = () => {
@@ -1612,6 +1697,21 @@ function initTableViews(db) {
                 }
             }
 
+            const pageButton = event.target.closest('[data-page-nav]');
+            if (pageButton) {
+                const limit = Math.max(1, Math.min(2000, Number.parseInt(pageLimitInput?.value, 10) || pagination.limit));
+                const skip = Math.max(0, Number.parseInt(pageSkipInput?.value, 10) || 0);
+                const nextSkip = pageButton.dataset.pageNav === 'previous'
+                    ? Math.max(0, skip - limit)
+                    : skip + limit;
+                if (cursorRowIndex < rows.length && isRowDirty(cursorRowIndex)) {
+                    const committed = await commitDirtyRow(cursorRowIndex);
+                    if (!committed) return;
+                }
+                await loadTablePage(nextSkip, limit);
+                return;
+            }
+
             const button = event.target.closest('[data-nav]');
             if (!button || !rows.length) {
                 return;
@@ -1630,6 +1730,27 @@ function initTableViews(db) {
 
             cursorRowIndex = targetRow;
             updateCellCursor();
+        });
+
+        view.addEventListener('change', event => {
+            if (event.target === pageSkipInput) {
+                pageSkipInput.value = String(Math.max(0, Number.parseInt(pageSkipInput.value, 10) || 0));
+            }
+            if (event.target === pageLimitInput) {
+                pageLimitInput.value = String(Math.max(1, Math.min(2000, Number.parseInt(pageLimitInput.value, 10) || 500)));
+            }
+        });
+
+        view.addEventListener('keydown', async event => {
+            if (event.key !== 'Enter' || (event.target !== pageSkipInput && event.target !== pageLimitInput)) {
+                return;
+            }
+            event.preventDefault();
+            if (cursorRowIndex < rows.length && isRowDirty(cursorRowIndex)) {
+                const committed = await commitDirtyRow(cursorRowIndex);
+                if (!committed) return;
+            }
+            await loadTablePage(pageSkipInput?.value, pageLimitInput?.value);
         });
     });
 }

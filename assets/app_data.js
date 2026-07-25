@@ -52,13 +52,14 @@ function getDatabase() {
 }
 
 async function postSchemaAction(payload) {
+    const page = window.acaciadbActiveTableController?.getPageState?.() || {};
     const response = await fetch('api/schema.php', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
             'X-Requested-With': 'XMLHttpRequest'
         },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({ ...page, ...payload })
     });
     const data = await response.json();
 
@@ -66,23 +67,28 @@ async function postSchemaAction(payload) {
         throw new Error(data.error || 'Schema update failed.');
     }
 
+    window.acaciadbActiveTableController?.syncPagination?.(data.payload?.pagination);
+
     return data;
 }
 
 async function postRecordAction(payload) {
+    const page = window.acaciadbActiveTableController?.getPageState?.() || {};
     const response = await fetch('api/records.php', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
             'X-Requested-With': 'XMLHttpRequest'
         },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({ ...page, ...payload })
     });
     const data = await response.json();
 
     if (!response.ok || !data.ok) {
         throw new Error(data.error || 'Record update failed.');
     }
+
+    window.acaciadbActiveTableController?.syncPagination?.(data.payload?.pagination);
 
     return data;
 }

@@ -1,5 +1,5 @@
 (function () {
-    const builtInFunctions = window.AccessExpressionFunctions;
+    const builtInFunctions = window.AcaciaDBExpressionFunctions;
     const functionGroups = builtInFunctions.groups;
 
     const operatorGroups = {
@@ -139,7 +139,7 @@
     }
 
     function assertSafeJavascript(source) {
-        if (/\b(fetch|XMLHttpRequest|eval|Function|document|window|globalThis|localStorage|sessionStorage|import|require|accessFns)\b/.test(source)) {
+        if (/\b(fetch|XMLHttpRequest|eval|Function|document|window|globalThis|localStorage|sessionStorage|import|require|acaciadbFns)\b/.test(source)) {
             throw new Error('Generated JavaScript uses a blocked API.');
         }
     }

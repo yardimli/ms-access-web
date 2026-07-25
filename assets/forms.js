@@ -153,7 +153,7 @@ function initFormViews(db) {
             const total = subRows.reduce((sum, row) => sum + Number(row.Total || row.UnitPrice * row.Quantity || 0), 0);
 
             view.innerHTML = `
-                <div class="access-form">
+                <div class="acaciadb-form">
                     <div class="form-title">${escapeHtml(form.title)}</div>
                     <div class="form-body">
                         <div class="form-fields">

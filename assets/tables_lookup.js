@@ -51,7 +51,7 @@ function normalizeLookupWizardMetadata(lookup = null) {
     };
 }
 
-window.AccessLookupWizard = {
+window.AcaciaDBLookupWizard = {
     open({
         db,
         tableName,

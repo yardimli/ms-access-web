@@ -159,7 +159,7 @@
         return descriptions[canonical] || `Use ${signature(canonical)} in the expression.`;
     }
 
-    window.AccessExpressionFunctions = {
+    window.AcaciaDBExpressionFunctions = {
         groups,
         names,
         canonicalName,

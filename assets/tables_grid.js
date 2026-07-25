@@ -49,8 +49,8 @@ function formatColumnValue(column, value) {
         }
         return labelFor(value);
     }
-    const type = column.accessType || column.type;
-    const format = column.accessFormat || defaultFieldFormats[type] || '';
+    const type = column.acaciadbType || column.type;
+    const format = column.acaciadbFormat || defaultFieldFormats[type] || '';
     const decimalPlaces = Number.isFinite(Number(column.decimalPlaces)) ? Number(column.decimalPlaces) : 2;
 
     if (['Number', 'Large Number', 'Currency'].includes(type)) {
@@ -127,10 +127,10 @@ function buildTableMarkup(tableDef, rows, options = {}) {
 
     const minWidth = columns.reduce((sum, column) => sum + (columnWidths[column.name] || column.width || 110), 40) + (allowAddColumn ? 120 : 0);
 
-    const tableClass = `access-grid ${options.className || ''}`.trim();
+    const tableClass = `acaciadb-grid ${options.className || ''}`.trim();
 
     return `
-        <table class="${escapeHtml(tableClass)}" style="min-width:${minWidth}px; --access-row-height:${rowHeight}px">
+        <table class="${escapeHtml(tableClass)}" style="min-width:${minWidth}px; --acaciadb-row-height:${rowHeight}px">
             <thead>
                 <tr>
                     <th class="row-head"></th>
@@ -229,14 +229,14 @@ function showColumnDialog({
 }) {
     return new Promise(resolve => {
         const dialog = document.createElement('dialog');
-        dialog.className = 'access-dialog';
+        dialog.className = 'acaciadb-dialog';
         dialog.innerHTML = `
             <form method="dialog">
-                <div class="access-dialog-title">
+                <div class="acaciadb-dialog-title">
                     <span>${escapeHtml(title)}</span>
                     <button type="button" data-dialog-cancel aria-label="Close"><i class="fas fa-times"></i></button>
                 </div>
-                <div class="access-dialog-body">
+                <div class="acaciadb-dialog-body">
                     <label class="dialog-field">
                         <span>${escapeHtml(label)}</span>
                         <input name="fieldName" value="${escapeHtml(value)}" autocomplete="off">
@@ -357,14 +357,14 @@ function showMessageDialog({ title, message, confirmText = 'OK' }) {
         };
 
         const dialog = document.createElement('dialog');
-        dialog.className = 'access-dialog';
+        dialog.className = 'acaciadb-dialog';
         dialog.innerHTML = `
             <form method="dialog">
-                <div class="access-dialog-title">
+                <div class="acaciadb-dialog-title">
                     <span>${escapeHtml(title)}</span>
                     <button type="button" data-dialog-close aria-label="Close"><i class="fas fa-times"></i></button>
                 </div>
-                <div class="access-dialog-body">
+                <div class="acaciadb-dialog-body">
                     <p class="dialog-error">${escapeHtml(message)}</p>
                 </div>
                 <div class="dialog-actions">
@@ -390,14 +390,14 @@ function showMessageDialog({ title, message, confirmText = 'OK' }) {
 function showConfirmDialog({ title, message, confirmText = 'Delete', cancelText = 'Cancel' }) {
     return new Promise(resolve => {
         const dialog = document.createElement('dialog');
-        dialog.className = 'access-dialog';
+        dialog.className = 'acaciadb-dialog';
         dialog.innerHTML = `
             <form method="dialog">
-                <div class="access-dialog-title">
+                <div class="acaciadb-dialog-title">
                     <span>${escapeHtml(title)}</span>
                     <button type="button" data-dialog-cancel aria-label="Close"><i class="fas fa-times"></i></button>
                 </div>
-                <div class="access-dialog-body">
+                <div class="acaciadb-dialog-body">
                     <p>${escapeHtml(message)}</p>
                 </div>
                 <div class="dialog-actions">
@@ -426,14 +426,14 @@ function showConfirmDialog({ title, message, confirmText = 'Delete', cancelText 
 function showChoiceDialog({ title, message, choices = [] }) {
     return new Promise(resolve => {
         const dialog = document.createElement('dialog');
-        dialog.className = 'access-dialog';
+        dialog.className = 'acaciadb-dialog';
         dialog.innerHTML = `
             <form method="dialog">
-                <div class="access-dialog-title">
+                <div class="acaciadb-dialog-title">
                     <span>${escapeHtml(title)}</span>
                     <button type="button" data-dialog-choice="" aria-label="Close"><i class="fas fa-times"></i></button>
                 </div>
-                <div class="access-dialog-body">
+                <div class="acaciadb-dialog-body">
                     <p>${escapeHtml(message)}</p>
                 </div>
                 <div class="dialog-actions">
@@ -464,7 +464,7 @@ function showChoiceDialog({ title, message, choices = [] }) {
 
 function showColumnHistoryDialog({ tableName, columnName, history = [] }) {
     const dialog = document.createElement('dialog');
-    dialog.className = 'access-dialog column-history-dialog';
+    dialog.className = 'acaciadb-dialog column-history-dialog';
     const lines = history.length
         ? history.map(item => {
             const date = new Date(item.changedAt);
@@ -475,11 +475,11 @@ function showColumnHistoryDialog({ tableName, columnName, history = [] }) {
 
     dialog.innerHTML = `
         <form method="dialog">
-            <div class="access-dialog-title">
+            <div class="acaciadb-dialog-title">
                 <span>History for ${escapeHtml(columnName)}</span>
                 <button type="button" data-dialog-close aria-label="Close"><i class="fas fa-times"></i></button>
             </div>
-            <div class="access-dialog-body">
+            <div class="acaciadb-dialog-body">
                 <div class="history-meta">
                     <p>History of changes for:</p>
                     <p><span>Column name:</span> ${escapeHtml(columnName)}</p>
@@ -532,11 +532,11 @@ function sortRowsByColumn(rows, column, direction) {
 }
 
 function resetRowsToOriginalOrder(rows) {
-    rows.sort((left, right) => (left.__accessOrder ?? 0) - (right.__accessOrder ?? 0));
+    rows.sort((left, right) => (left.__acaciadbOrder ?? 0) - (right.__acaciadbOrder ?? 0));
 }
 
 function tablePrefsKey(tableName) {
-    return `msAccessWeb.table.${tableName}.viewPrefs`;
+    return `acaciadbWeb.table.${tableName}.viewPrefs`;
 }
 
 function readTablePrefs(tableName) {
@@ -564,8 +564,8 @@ function enableSubformSorting(host, tableDef, rows, columns) {
     const sortState = { column: null, direction: 'none' };
 
     rows.forEach((row, index) => {
-        if (row.__accessOrder === undefined) {
-            Object.defineProperty(row, '__accessOrder', {
+        if (row.__acaciadbOrder === undefined) {
+            Object.defineProperty(row, '__acaciadbOrder', {
                 value: index,
                 enumerable: false,
                 configurable: true
@@ -598,4 +598,3 @@ function enableSubformSorting(host, tableDef, rows, columns) {
         });
     });
 }
-

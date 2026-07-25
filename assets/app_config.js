@@ -13,7 +13,7 @@ const ribbons = {
         ['Reports', [['report', 'Invoice Summary', 'report']]]
     ],
     external: [
-        ['Import & Link', [['import', 'Saved Imports'], ['excel', 'Excel'], ['access', 'Access'], ['odbc', 'ODBC'], ['more', 'More']]],
+        ['Import & Link', [['import', 'Saved Imports'], ['excel', 'Excel'], ['acaciadb', 'AcaciaDB'], ['odbc', 'ODBC'], ['more', 'More']]],
         ['Export', [['export', 'Saved Exports'], ['excel', 'Excel'], ['text', 'Text File'], ['email', 'Email']]]
     ],
     database: [
@@ -46,7 +46,7 @@ const ribbons = {
         ['Backstage', [['save', 'Save'], ['save-as', 'Save As'], ['print', 'Print'], ['options', 'Options']]]
     ],
     help: [
-        ['Help', [['find', 'Search Help'], ['options', 'Access Options'], ['secure', 'Privacy']]]
+        ['Help', [['find', 'Search Help'], ['options', 'AcaciaDB Options'], ['secure', 'Privacy']]]
     ]
 };
 
@@ -77,9 +77,10 @@ const content = document.querySelector('#content');
 const ribbon = document.querySelector('#ribbon');
 const tabs = document.querySelector('#document-tabs');
 const status = document.querySelector('#view-status');
-const app = document.querySelector('#access-app');
+const app = document.querySelector('#acaciadb-app');
 const workspaceMain = document.querySelector('#workspace-main');
 const objectPane = document.querySelector('#object-pane');
+const objectPaneSplitter = document.querySelector('#object-pane-splitter');
 const contextualToolsLabel = document.querySelector('#contextual-tools-label');
 const tableToolsTabs = document.querySelector('#table-tools-tabs');
 const formToolsTabs = document.querySelector('#form-tools-tabs');

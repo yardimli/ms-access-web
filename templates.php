@@ -11,6 +11,14 @@
                     <button data-nav="next" title="Next record"><i class="fas fa-caret-right"></i></button>
                     <button data-nav="last" title="Last record"><i class="fas fa-step-forward"></i></button>
                     <button class="opacity-40" disabled title="New record"><i class="fas fa-asterisk"></i></button>
+                    <span class="record-page-controls" data-page-controls>
+                        <span class="record-page-divider"></span>
+                        <button type="button" data-page-nav="previous" title="Previous page"><i class="fas fa-chevron-left"></i></button>
+                        <label>Skip <input type="number" min="0" step="1" value="0" data-page-skip aria-label="Rows to skip"></label>
+                        <label>Limit <input type="number" min="1" max="2000" step="1" value="500" data-page-limit aria-label="Rows per page"></label>
+                        <button type="button" data-page-nav="next" title="Next page"><i class="fas fa-chevron-right"></i></button>
+                        <span class="record-total" data-page-total>Total rows: 0</span>
+                    </span>
                     <span class="border-l border-[#c6c6c6] pl-2 text-neutral-500">No Filter</span>
                     <input class="record-search-input" value="Search">
                 </div>
@@ -27,7 +35,7 @@
     </template>
 
     <template id="template-form-view">
-        <div class="view-shell bg-[#d9e4f0]" data-title="" data-status="Form View">
+        <div class="view-shell view-shell-scroll bg-[#d9e4f0]" data-title="" data-status="Form View">
             <div class="form-view" data-form-view data-form-id="">
                 <div class="p-6 text-neutral-500">Loading form data...</div>
             </div>
@@ -62,7 +70,7 @@
     </template>
 
     <template id="template-report-view">
-        <div class="view-shell bg-[#bfc8d2]" data-title="" data-status="Report View">
+        <div class="view-shell view-shell-scroll bg-[#bfc8d2]" data-title="" data-status="Report View">
             <div data-report-view data-report-id="">
                 <div class="p-6 text-neutral-600">Loading report...</div>
             </div>

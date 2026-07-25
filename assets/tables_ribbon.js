@@ -32,17 +32,17 @@ const defaultFieldFormats = {
     'Yes/No': 'Yes/No'
 };
 
-function accessTypeForColumn(column) {
-    return column?.accessType || column?.type || 'Short Text';
+function acaciadbTypeForColumn(column) {
+    return column?.acaciadbType || column?.type || 'Short Text';
 }
 
 function isMemoColumn(column) {
-    return ['Long Text', 'HTML Text', 'Rich Text'].includes(accessTypeForColumn(column));
+    return ['Long Text', 'HTML Text', 'Rich Text'].includes(acaciadbTypeForColumn(column));
 }
 
 function fieldFormatForColumn(column) {
-    const type = accessTypeForColumn(column);
-    return column?.accessFormat || defaultFieldFormats[type] || 'Formatting';
+    const type = acaciadbTypeForColumn(column);
+    return column?.acaciadbFormat || defaultFieldFormats[type] || 'Formatting';
 }
 
 function ribbonMiniButton(icon, label, options = {}) {
@@ -163,13 +163,13 @@ function displayFieldSize(column) {
     return '';
 }
 
-function updateFieldsRibbonState(column = window.accessActiveTableColumn) {
+function updateFieldsRibbonState(column = window.acaciadbActiveTableColumn) {
     if (!ribbon?.querySelector?.('.fields-ribbon')) {
         return;
     }
 
-    window.accessActiveTableColumn = column || window.accessActiveTableColumn || null;
-    const activeColumn = window.accessActiveTableColumn;
+    window.acaciadbActiveTableColumn = column || window.acaciadbActiveTableColumn || null;
+    const activeColumn = window.acaciadbActiveTableColumn;
     const sizeRow = ribbon.querySelector('[data-field-size-row]');
     const sizeInput = ribbon.querySelector('[data-field-size-input]');
     const typeSelect = ribbon.querySelector('[data-field-data-type]');
@@ -180,7 +180,7 @@ function updateFieldsRibbonState(column = window.accessActiveTableColumn) {
     const lookupButton = ribbon.querySelector('[data-command="lookup"]');
     const expressionButton = ribbon.querySelector('[data-command="expression"]');
     const memoButton = ribbon.querySelector('[data-command="memo"]');
-    const isCalculated = accessTypeForColumn(activeColumn) === 'Calculated Field' || Boolean(activeColumn?.calculatedJavascript);
+    const isCalculated = acaciadbTypeForColumn(activeColumn) === 'Calculated Field' || Boolean(activeColumn?.calculatedJavascript);
     const isLookup = Boolean(activeColumn?.lookup);
     const protectedFieldSettings = Boolean(activeColumn?.primaryKey || isCalculated || isLookup);
 
@@ -222,14 +222,14 @@ function updateFieldsRibbonState(column = window.accessActiveTableColumn) {
     }
 
     if (typeSelect && activeColumn) {
-        const accessType = accessTypeForColumn(activeColumn);
-        typeSelect.value = tableDataTypes.includes(accessType) ? accessType : 'Short Text';
-        typeSelect.disabled = Boolean(protectedFieldSettings || accessType === 'Attachment');
+        const acaciadbType = acaciadbTypeForColumn(activeColumn);
+        typeSelect.value = tableDataTypes.includes(acaciadbType) ? acaciadbType : 'Short Text';
+        typeSelect.disabled = Boolean(protectedFieldSettings || acaciadbType === 'Attachment');
     }
 
     if (formatRow && formatSelect) {
-        const accessType = accessTypeForColumn(activeColumn);
-        const options = fieldFormatOptions[accessType] || [];
+        const acaciadbType = acaciadbTypeForColumn(activeColumn);
+        const options = fieldFormatOptions[acaciadbType] || [];
         const enabled = options.length > 0 && !protectedFieldSettings;
         formatRow.classList.toggle('disabled', !enabled);
         formatSelect.disabled = !enabled;
@@ -242,8 +242,8 @@ function updateFieldsRibbonState(column = window.accessActiveTableColumn) {
         formatButtons.forEach(button => {
             const command = button.dataset.formatCommand;
             const isDecimal = command === 'decimal-less' || command === 'decimal-more';
-            const buttonEnabled = ['Number', 'Large Number', 'Currency'].includes(accessType)
-                && (!isDecimal || accessType !== 'Yes/No')
+            const buttonEnabled = ['Number', 'Large Number', 'Currency'].includes(acaciadbType)
+                && (!isDecimal || acaciadbType !== 'Yes/No')
                 && !protectedFieldSettings;
             button.disabled = !buttonEnabled;
             button.classList.toggle('disabled', !buttonEnabled);
@@ -333,4 +333,3 @@ function renderTableDesignRibbon() {
         </div>
     `;
 }
-

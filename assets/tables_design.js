@@ -90,7 +90,7 @@ function initDesignViews(db) {
             <div class="table-design-layout">
                 <div class="table-design-main">
                     <div class="table-design-grid-wrap">
-                        <table class="access-grid design-grid" style="min-width:920px">
+                        <table class="acaciadb-grid design-grid" style="min-width:920px">
                             <thead>
                                 <tr>
                                     <th class="row-head"></th>

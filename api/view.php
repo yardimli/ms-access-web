@@ -1,8 +1,10 @@
 <?php
 
-require_once __DIR__ . '/../lib/access_data.php';
+require_once __DIR__ . '/../lib/acaciadb_data.php';
 
 $view = $_GET['view'] ?? '';
+$tableSkip = max(0, (int) ($_GET['skip'] ?? 0));
+$tableLimit = max(1, min(2000, (int) ($_GET['limit'] ?? 500)));
 
 function view_payload(string $view, string $type, string $mode, string $object, string $title, string $status, array $data = []): array
 {
@@ -43,11 +45,11 @@ try {
 
     foreach (fetch_table_names($db) as $table) {
         $firstTable ??= $table;
-        $slug = access_slug($table);
+        $slug = acaciadb_slug($table);
 
         if ($view === "table-$slug") {
             $payload = view_payload($view, 'table', 'datasheet', $table, $table, 'Datasheet View', [
-                'tables' => [$table => fetch_table_payload($db, $table, true)],
+                'tables' => [$table => fetch_table_payload($db, $table, true, $tableSkip, $tableLimit)],
             ]);
             break;
         }
@@ -68,7 +70,7 @@ try {
 
     if (!$payload) {
         foreach (fetch_object_names($db, 'form') as $formName) {
-            $slug = access_slug($formName);
+            $slug = acaciadb_slug($formName);
             $isFormView = $view === "form-$slug";
             $isDesignView = $view === "design-form-$slug";
 
@@ -104,7 +106,7 @@ try {
 
     if (!$payload) {
         foreach (fetch_object_names($db, 'query') as $queryName) {
-            if ($view !== 'query-' . access_slug($queryName) && !($view === 'query-sales-region' && $queryName === 'SalesByRegion')) {
+            if ($view !== 'query-' . acaciadb_slug($queryName) && !($view === 'query-sales-region' && $queryName === 'SalesByRegion')) {
                 continue;
             }
 
@@ -123,7 +125,7 @@ try {
 
     if (!$payload) {
         foreach (fetch_object_names($db, 'report') as $reportName) {
-            if ($view !== 'report-' . access_slug($reportName) && $view !== 'report') {
+            if ($view !== 'report-' . acaciadb_slug($reportName) && $view !== 'report') {
                 continue;
             }
 
