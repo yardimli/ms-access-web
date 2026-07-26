@@ -76,6 +76,17 @@ document.addEventListener('click', async event => {
         return;
     }
 
+    const designCommand = event.target.closest('.table-design-ribbon [data-command]');
+    if (designCommand && isTableDesignView(currentView) && !designCommand.disabled && ['index', 'insert-row', 'delete', 'lookup', 'primary-key'].includes(designCommand.dataset.command)) {
+        const controller = window.acaciadbActiveDesignController;
+        if (designCommand.dataset.command === 'index') controller?.openIndexesDialog?.();
+        if (designCommand.dataset.command === 'insert-row') controller?.insertSelectedField?.();
+        if (designCommand.dataset.command === 'delete') controller?.deleteSelectedField?.();
+        if (designCommand.dataset.command === 'lookup') await controller?.modifySelectedLookup?.();
+        if (designCommand.dataset.command === 'primary-key') controller?.setSelectedPrimaryKey?.();
+        return;
+    }
+
     const captionCommand = event.target.closest('[data-command="caption"]');
     if (captionCommand && isTableDatasheetView(currentView)) {
         await window.acaciadbActiveTableController?.openColumnDialog?.();

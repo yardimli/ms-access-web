@@ -504,6 +504,31 @@ function fetch_table_row_count(mysqli $db, string $tableName): int
     return (int) (($result->fetch_assoc()['total_rows'] ?? 0));
 }
 
+function fetch_table_indexes(mysqli $db, string $tableName): array
+{
+    $stmt = $db->prepare(
+        'SELECT index_name, column_name, non_unique, seq_in_index, collation
+         FROM information_schema.statistics
+         WHERE table_schema = DATABASE()
+           AND table_name = ?
+         ORDER BY index_name, seq_in_index'
+    );
+    $stmt->bind_param('s', $tableName);
+    $stmt->execute();
+    $indexes = [];
+    foreach ($stmt->get_result() as $row) {
+        $indexes[] = [
+            'name' => (string) $row['index_name'],
+            'field' => (string) $row['column_name'],
+            'primary' => strtoupper((string) $row['index_name']) === 'PRIMARY',
+            'unique' => (int) $row['non_unique'] === 0,
+            'sequence' => (int) $row['seq_in_index'],
+            'sortOrder' => strtoupper((string) ($row['collation'] ?? 'A')) === 'D' ? 'Descending' : 'Ascending',
+        ];
+    }
+    return $indexes;
+}
+
 function fetch_table_rows(mysqli $db, string $tableName, string $primaryKey = '', int $skip = 0, int $limit = 500): array
 {
     [$skip, $limit] = normalize_table_page($skip, $limit);
@@ -544,6 +569,7 @@ function fetch_table_payload(mysqli $db, string $tableName, bool $includeRows = 
         'structure' => [
             'primaryKey' => $primaryKey,
             'columns' => $columns,
+            'indexes' => fetch_table_indexes($db, $tableName),
             'tableProperties' => (array) (fetch_table_metadata($db, $tableName)['tableProperties'] ?? []),
         ],
     ];

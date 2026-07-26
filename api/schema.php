@@ -573,6 +573,8 @@ try {
 
     if ($action === 'applyDesignChanges') {
         $changes = is_array($request['columns'] ?? null) ? $request['columns'] : [];
+        $requestedPrimaryKey = trim((string) ($request['primaryKey'] ?? ''));
+        $currentPrimaryKey = first_primary_key($db, $resolvedTable);
         $metadata = fetch_table_metadata($db, $resolvedTable);
         $metadata['columns'] ??= [];
 
@@ -626,7 +628,7 @@ try {
                 }
                 $isPrimary = fetch_column_key($db, $resolvedTable, $originalName) === 'PRI';
                 $currentType = strtoupper((string) $definition['column_type']);
-                if ($isPrimary && ($name !== $originalName || $acaciadbType !== 'AutoNumber')) {
+                if ($isPrimary && $requestedPrimaryKey === $currentPrimaryKey && ($name !== $originalName || $acaciadbType !== 'AutoNumber')) {
                     throw new RuntimeException('The primary key name and data type cannot be changed in Design View.');
                 }
                 if ($name !== $originalName && column_exists($db, $resolvedTable, $name)) {
@@ -697,6 +699,37 @@ try {
                 'decimalPlaces' => max(0, min(6, (int) ($change['decimalPlaces'] ?? 2))),
                 'lookup' => is_array($change['lookup'] ?? null) ? $change['lookup'] : null,
             ]);
+        }
+
+        if ($requestedPrimaryKey !== '' && strcasecmp($requestedPrimaryKey, $currentPrimaryKey) !== 0) {
+            $requestedPrimaryKey = validate_field_name($requestedPrimaryKey);
+            if (!column_exists($db, $resolvedTable, $requestedPrimaryKey)) {
+                throw new RuntimeException('The new primary key field was not found.');
+            }
+            if (column_has_blank_values($db, $resolvedTable, $requestedPrimaryKey, false)) {
+                throw new RuntimeException('The primary key could not be changed because ' . $requestedPrimaryKey . ' contains null values. Fill those values and try again.');
+            }
+            if (column_has_duplicates($db, $resolvedTable, $requestedPrimaryKey)) {
+                throw new RuntimeException('The primary key could not be changed because ' . $requestedPrimaryKey . ' contains duplicate values. Remove the duplicates or choose another field.');
+            }
+
+            $alterParts = [];
+            if ($currentPrimaryKey !== '') {
+                $oldPrimaryDefinition = fetch_column_definition($db, $resolvedTable, $currentPrimaryKey);
+                if ($oldPrimaryDefinition && stripos((string) ($oldPrimaryDefinition['extra'] ?? ''), 'auto_increment') !== false) {
+                    $oldPrimaryDefinition['extra'] = trim(str_ireplace('auto_increment', '', (string) $oldPrimaryDefinition['extra']));
+                    $oldPrimaryDefinition['is_nullable'] = 'YES';
+                    $alterParts[] = 'MODIFY COLUMN ' . db_identifier($currentPrimaryKey) . ' ' . column_definition_sql($oldPrimaryDefinition);
+                }
+                $alterParts[] = 'DROP PRIMARY KEY';
+            }
+            $alterParts[] = 'ADD PRIMARY KEY (' . db_identifier($requestedPrimaryKey) . ')';
+
+            try {
+                $db->query('ALTER TABLE ' . db_identifier($resolvedTable) . ' ' . implode(', ', $alterParts));
+            } catch (Throwable $exception) {
+                throw new RuntimeException('The primary key change failed: ' . $exception->getMessage());
+            }
         }
 
         $metadata['tableProperties'] = is_array($request['tableProperties'] ?? null) ? $request['tableProperties'] : [];

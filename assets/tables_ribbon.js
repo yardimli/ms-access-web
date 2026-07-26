@@ -309,12 +309,12 @@ function renderTableDesignRibbon() {
                 ${designCommand('grid', 'View', { view: '@datasheet', caret: true })}
             </div>
             <div class="design-ribbon-group design-tools-group" data-label="Tools">
-                ${designCommand('primary-key', 'Primary Key', { disabled: true })}
+                ${designCommand('primary-key', 'Primary Key')}
                 ${designCommand('builder', 'Builder', { disabled: true })}
                 ${designCommand('test-validation', 'Test Validation Rules', { disabled: true })}
                 <div class="design-stack">
-                    ${designMini('insert-row', 'Insert Rows', { disabled: true })}
-                    ${designMini('delete', 'Delete Rows', { disabled: true })}
+                    ${designMini('insert-row', 'Insert Rows')}
+                    ${designMini('delete', 'Delete Rows')}
                     ${designMini('lookup', 'Modify Lookups', { disabled: true })}
                 </div>
             </div>

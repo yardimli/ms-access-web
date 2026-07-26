@@ -1731,6 +1731,17 @@
 .table-design-main { grid-template-rows: minmax(120px, 1fr) minmax(330px, 48%); }
 .field-properties-body { min-height: 0; padding: 6px 12px 10px; }
 .field-properties-editor { min-width: 0; }
+.field-properties-body .field-property-help {
+    align-self: stretch;
+    display: grid;
+    place-items: center;
+    min-height: 120px;
+    margin: 0;
+    padding: 16px 22px;
+    color: #344454;
+    line-height: 1.35;
+    text-align: center;
+}
 .field-properties .property-grid { grid-template-columns: minmax(135px, 165px) minmax(180px, 1fr); }
 .property-grid.empty { display: block; min-height: 190px; }
 .field-properties-empty { padding: 16px; color: #68717a; }
@@ -1772,4 +1783,39 @@
 .design-save-list li { margin: 3px 0; }
 .design-save-warning { border: 1px solid #d6b56f; background: #fff8df; color: #6e4c00; padding: 8px; }
 .design-save-warning i { margin-right: 6px; }
+
+.design-command.selected {
+    background: #c9d9e8;
+    box-shadow: inset 0 0 0 1px #91a9bd;
+}
+
+.indexes-dialog {
+    width: min(760px, calc(100vw - 30px));
+    max-width: none;
+}
+
+.indexes-grid-wrap {
+    position: relative;
+    height: 270px;
+    overflow: auto;
+    background: #fff;
+}
+
+.indexes-grid {
+    width: 100%;
+    min-width: 620px;
+    table-layout: fixed;
+}
+
+.indexes-grid th:first-child { width: 24px; }
+.indexes-grid th:nth-child(2) { width: 180px; }
+.indexes-grid th:nth-child(3) { width: 120px; }
+.indexes-grid th:nth-child(4) { width: auto; }
+.indexes-grid td { height: 24px; padding: 2px 4px; }
+.indexes-grid tr.editing td { outline: 1px solid #e88e99; outline-offset: -1px; }
+.indexes-empty { padding: 18px; color: #66717d; }
+.indexes-properties { min-height: 118px; border-top: 1px solid #b9c0c7; background: #fff; padding: 4px 10px 10px; }
+.indexes-properties-body { display: grid; grid-template-columns: minmax(300px, 1fr) 320px; gap: 14px; align-items: end; }
+.indexes-properties .property-grid { grid-template-columns: 150px minmax(120px, 1fr); }
+.indexes-properties-body p { text-align: center; color: #53616e; }
 
