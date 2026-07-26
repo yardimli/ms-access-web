@@ -544,6 +544,7 @@ function fetch_table_payload(mysqli $db, string $tableName, bool $includeRows = 
         'structure' => [
             'primaryKey' => $primaryKey,
             'columns' => $columns,
+            'tableProperties' => (array) (fetch_table_metadata($db, $tableName)['tableProperties'] ?? []),
         ],
     ];
 

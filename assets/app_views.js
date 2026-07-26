@@ -326,7 +326,7 @@ function closeActiveTab() {
     loadView(nextTab.view);
 }
 
-function switchTableMode(mode) {
+async function switchTableMode(mode) {
     const target = mode === 'design'
         ? tableViewPairs[currentView] || formViewPairs[currentView] || currentView
         : designViewPairs[currentView] || formDesignViewPairs[currentView] || currentView;
@@ -335,7 +335,15 @@ function switchTableMode(mode) {
         return;
     }
 
-    loadView(target, { replaceActive: true });
+    if (isTableDesignView(currentView) && mode === 'datasheet') {
+        const controller = window.acaciadbActiveDesignController;
+        if (controller?.isDirty?.()) {
+            const saved = await controller.saveDesign();
+            if (!saved) return;
+        }
+    }
+
+    await loadView(target, { replaceActive: true });
 }
 
 async function initCurrentView() {

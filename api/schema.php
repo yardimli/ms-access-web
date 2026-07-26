@@ -32,6 +32,7 @@ function validate_field_name(string $name): string
 function mysql_type_for_acaciadb_type(string $type): string
 {
     return match ($type) {
+        'AutoNumber' => 'INT NOT NULL AUTO_INCREMENT',
         'Number' => 'INT NULL',
         'Large Number' => 'BIGINT NULL',
         'Currency' => 'DECIMAL(12,2) NULL DEFAULT 0',
@@ -45,6 +46,9 @@ function mysql_type_for_acaciadb_type(string $type): string
 
 function mysql_column_type_for_acaciadb_type(string $type): string
 {
+    if ($type === 'AutoNumber') {
+        return 'INT';
+    }
     return trim(str_replace([' NULL DEFAULT 0', ' NULL'], '', mysql_type_for_acaciadb_type($type)));
 }
 
@@ -565,6 +569,144 @@ try {
 
     if (!$resolvedTable) {
         throw new RuntimeException('Table was not found.');
+    }
+
+    if ($action === 'applyDesignChanges') {
+        $changes = is_array($request['columns'] ?? null) ? $request['columns'] : [];
+        $metadata = fetch_table_metadata($db, $resolvedTable);
+        $metadata['columns'] ??= [];
+
+        foreach ($changes as $change) {
+            if (!is_array($change)) {
+                continue;
+            }
+            $originalName = trim((string) ($change['originalName'] ?? ''));
+            $deleted = filter_var($change['deleted'] ?? false, FILTER_VALIDATE_BOOL);
+            $isNew = filter_var($change['isNew'] ?? false, FILTER_VALIDATE_BOOL);
+
+            if ($deleted) {
+                if ($isNew || $originalName === '') {
+                    continue;
+                }
+                $originalName = validate_field_name($originalName);
+                if (fetch_column_key($db, $resolvedTable, $originalName) === 'PRI') {
+                    throw new RuntimeException('Primary key fields cannot be deleted.');
+                }
+                if (column_exists($db, $resolvedTable, $originalName)) {
+                    $db->query('ALTER TABLE ' . db_identifier($resolvedTable) . ' DROP COLUMN ' . db_identifier($originalName));
+                }
+                unset($metadata['columns'][$originalName]);
+                continue;
+            }
+
+            $name = validate_field_name((string) ($change['name'] ?? ''));
+            $acaciadbType = validate_acaciadb_column_type((string) ($change['type'] ?? 'Short Text'));
+            if (in_array($acaciadbType, ['Lookup & Relationship', 'Calculated Field'], true)) {
+                throw new RuntimeException('Use the Lookup or Calculated Field tools to create that field type.');
+            }
+            $newMysqlType = mysql_column_type_for_acaciadb_type($acaciadbType);
+            $comment = trim((string) ($change['comment'] ?? ''));
+            $friendlyName = trim((string) ($change['friendlyName'] ?? ''));
+
+            if ($isNew) {
+                if (column_exists($db, $resolvedTable, $name)) {
+                    throw new RuntimeException('A field named ' . $name . ' already exists.');
+                }
+                $db->query(
+                    'ALTER TABLE ' . db_identifier($resolvedTable) .
+                    ' ADD COLUMN ' . db_identifier($name) . ' ' . $newMysqlType . ' NULL' .
+                    ($comment !== '' ? " COMMENT '" . $db->real_escape_string($comment) . "'" : '')
+                );
+                $originalName = $name;
+            } else {
+                $originalName = validate_field_name($originalName);
+                $definition = fetch_column_definition($db, $resolvedTable, $originalName);
+                if (!$definition) {
+                    throw new RuntimeException('Field ' . $originalName . ' was not found.');
+                }
+                $isPrimary = fetch_column_key($db, $resolvedTable, $originalName) === 'PRI';
+                $currentType = strtoupper((string) $definition['column_type']);
+                if ($isPrimary && ($name !== $originalName || $acaciadbType !== 'AutoNumber')) {
+                    throw new RuntimeException('The primary key name and data type cannot be changed in Design View.');
+                }
+                if ($name !== $originalName && column_exists($db, $resolvedTable, $name)) {
+                    throw new RuntimeException('A field named ' . $name . ' already exists.');
+                }
+                if (!$isPrimary && $currentType !== strtoupper($newMysqlType)) {
+                    verify_column_type_change($db, $resolvedTable, $originalName, $newMysqlType, $definition);
+                    $definition['column_type'] = $newMysqlType;
+                    $definition['column_default'] = null;
+                }
+                if ($name !== $originalName || (!$isPrimary && $currentType !== strtoupper($newMysqlType)) || $comment !== (string) ($definition['column_comment'] ?? '')) {
+                    $db->query(
+                        'ALTER TABLE ' . db_identifier($resolvedTable) .
+                        ' CHANGE COLUMN ' . db_identifier($originalName) . ' ' . db_identifier($name) . ' ' .
+                        column_definition_sql($definition, $comment)
+                    );
+                }
+                if ($name !== $originalName && isset($metadata['columns'][$originalName])) {
+                    $metadata['columns'][$name] = $metadata['columns'][$originalName];
+                    unset($metadata['columns'][$originalName]);
+                }
+            }
+
+            $definition = fetch_column_definition($db, $resolvedTable, $name);
+            $isPrimary = fetch_column_key($db, $resolvedTable, $name) === 'PRI';
+            if (!$isPrimary && $definition) {
+                $required = filter_var($change['required'] ?? false, FILTER_VALIDATE_BOOL);
+                if ($required && column_has_blank_values($db, $resolvedTable, $name, column_allows_empty_string_check($definition))) {
+                    throw new RuntimeException($name . ' cannot be Required because it contains blank values.');
+                }
+                if (($definition['is_nullable'] === 'NO') !== $required) {
+                    $definition['is_nullable'] = $required ? 'NO' : 'YES';
+                    $db->query('ALTER TABLE ' . db_identifier($resolvedTable) . ' MODIFY COLUMN ' . db_identifier($name) . ' ' . column_definition_sql($definition, $comment));
+                }
+
+                $unique = filter_var($change['unique'] ?? false, FILTER_VALIDATE_BOOL);
+                $indexed = filter_var($change['indexed'] ?? false, FILTER_VALIDATE_BOOL);
+                $uniqueIndex = schema_index_name($name, true);
+                $plainIndex = schema_index_name($name, false);
+                if ($unique) {
+                    if (column_has_duplicates($db, $resolvedTable, $name)) {
+                        throw new RuntimeException($name . ' cannot be unique because it contains duplicate values.');
+                    }
+                    if (index_exists($db, $resolvedTable, $plainIndex)) {
+                        $db->query('ALTER TABLE ' . db_identifier($resolvedTable) . ' DROP INDEX ' . db_identifier($plainIndex));
+                    }
+                    if (!index_exists($db, $resolvedTable, $uniqueIndex)) {
+                        $db->query('ALTER TABLE ' . db_identifier($resolvedTable) . ' ADD UNIQUE INDEX ' . db_identifier($uniqueIndex) . ' (' . db_identifier($name) . ')');
+                    }
+                } else {
+                    if (index_exists($db, $resolvedTable, $uniqueIndex)) {
+                        $db->query('ALTER TABLE ' . db_identifier($resolvedTable) . ' DROP INDEX ' . db_identifier($uniqueIndex));
+                    }
+                    if ($indexed && !index_exists($db, $resolvedTable, $plainIndex)) {
+                        $db->query('ALTER TABLE ' . db_identifier($resolvedTable) . ' ADD INDEX ' . db_identifier($plainIndex) . ' (' . db_identifier($name) . ')');
+                    } elseif (!$indexed && index_exists($db, $resolvedTable, $plainIndex)) {
+                        $db->query('ALTER TABLE ' . db_identifier($resolvedTable) . ' DROP INDEX ' . db_identifier($plainIndex));
+                    }
+                }
+            }
+
+            $metadata['columns'][$name] = array_merge($metadata['columns'][$name] ?? [], [
+                'friendlyName' => $friendlyName,
+                'acaciadbType' => $acaciadbType,
+                'mysqlType' => $newMysqlType,
+                'comment' => $comment,
+                'acaciadbFormat' => (string) ($change['format'] ?? default_acaciadb_format_for_type($acaciadbType)),
+                'decimalPlaces' => max(0, min(6, (int) ($change['decimalPlaces'] ?? 2))),
+                'lookup' => is_array($change['lookup'] ?? null) ? $change['lookup'] : null,
+            ]);
+        }
+
+        $metadata['tableProperties'] = is_array($request['tableProperties'] ?? null) ? $request['tableProperties'] : [];
+        save_table_metadata($db, $resolvedTable, $metadata);
+        json_response([
+            'ok' => true,
+            'table' => $resolvedTable,
+            'payload' => schema_table_payload($db, $resolvedTable, $request),
+        ]);
+        exit;
     }
 
     if ($action === 'addColumn') {

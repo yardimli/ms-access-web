@@ -68,7 +68,11 @@ document.addEventListener('click', async event => {
 
     const propertySheetCommand = event.target.closest('[data-command="properties"]');
     if (propertySheetCommand && (isTableDesignView(currentView) || currentView.startsWith('design-form-'))) {
-        content.querySelector('[data-property-sheet]')?.classList.toggle('hidden');
+        if (isTableDesignView(currentView) && window.acaciadbActiveDesignController?.togglePropertySheet) {
+            window.acaciadbActiveDesignController.togglePropertySheet();
+        } else {
+            content.querySelector('[data-property-sheet]')?.classList.toggle('hidden');
+        }
         return;
     }
 

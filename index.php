@@ -118,6 +118,7 @@ $appAssetVersion = max(array_map('filemtime', array_merge(
     <script src="assets/tables_lookup.js?v=<?= $tableAssetVersion ?>"></script>
     <script src="assets/tables_datasheet.js?v=<?= $tableAssetVersion ?>"></script>
     <script src="assets/tables_design.js?v=<?= $tableAssetVersion ?>"></script>
+    <script src="assets/tables_design_editor.js?v=<?= $tableAssetVersion ?>"></script>
     <script src="assets/forms.js"></script>
     <script src="assets/queries.js"></script>
     <script src="assets/reports.js"></script>
