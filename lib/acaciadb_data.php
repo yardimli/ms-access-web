@@ -439,6 +439,57 @@ function fetch_table_columns(mysqli $db, string $tableName): array
         }
     }
 
+    $physicalNames = array_map(fn (array $column): string => strtolower((string) $column['name']), $columns);
+    $virtualColumns = [];
+    foreach ($columnMetadata as $columnName => $columnDefinition) {
+        if (empty($columnDefinition['virtual']) || in_array(strtolower((string) $columnName), $physicalNames, true)) {
+            continue;
+        }
+        $lookup = is_array($columnDefinition['lookup'] ?? null) ? $columnDefinition['lookup'] : null;
+        if (!$lookup) {
+            continue;
+        }
+        $friendlyName = trim((string) ($columnDefinition['friendlyName'] ?? ''));
+        $virtualColumns[] = [
+            'position' => max(0, (int) ($columnDefinition['position'] ?? count($columns))),
+            'column' => [
+                'name' => (string) $columnName,
+                'label' => $friendlyName !== '' ? $friendlyName : (string) $columnName,
+                'friendlyName' => $friendlyName,
+                'acaciadbType' => 'Lookup & Relationship',
+                'acaciadbFormat' => '',
+                'decimalPlaces' => 2,
+                'lookup' => $lookup,
+                'appendOnly' => false,
+                'defaultExpression' => '',
+                'defaultJavascript' => '',
+                'defaultInterpretNatural' => false,
+                'calculatedExpression' => '',
+                'calculatedJavascript' => '',
+                'calculatedInterpretNatural' => false,
+                'validationRule' => '',
+                'validationJavascript' => '',
+                'validationInterpretNatural' => false,
+                'comment' => (string) ($columnDefinition['comment'] ?? ''),
+                'type' => 'Lookup & Relationship',
+                'inferredAcaciaDBType' => 'Lookup & Relationship',
+                'mysqlType' => (string) ($columnDefinition['mysqlType'] ?? ''),
+                'actualMysqlType' => '',
+                'fieldSize' => null,
+                'primaryKey' => false,
+                'required' => false,
+                'unique' => false,
+                'indexed' => false,
+                'virtual' => true,
+                'width' => (int) ($columnDefinition['width'] ?? 150),
+            ],
+        ];
+    }
+    usort($virtualColumns, fn (array $left, array $right): int => $left['position'] <=> $right['position']);
+    foreach ($virtualColumns as $virtualColumn) {
+        array_splice($columns, min(count($columns), $virtualColumn['position']), 0, [$virtualColumn['column']]);
+    }
+
     return [$columns, $primaryKey ?? ($columns[0]['name'] ?? '')];
 }
 
@@ -505,6 +556,25 @@ function fetch_table_payload(mysqli $db, string $tableName, bool $includeRows = 
         $rows = fetch_table_rows($db, $tableName, $primaryKey, $skip, $limit);
         foreach ($columns as $column) {
             $lookup = $column['lookup'] ?? null;
+            if (
+                is_array($lookup)
+                && ($lookup['kind'] ?? 'static') === 'table'
+                && ($lookup['mode'] ?? 'single') === 'multiple'
+                && ($lookup['storageMode'] ?? '') === 'json'
+            ) {
+                foreach ($rows as &$row) {
+                    $stored = json_decode((string) ($row[$column['name']] ?? ''), true);
+                    if (!is_array($stored)) {
+                        $stored = [];
+                    }
+                    $row[$column['name']] = implode(',', array_values(array_filter(array_map(
+                        fn ($item): string => is_array($item) ? (string) ($item['key'] ?? '') : (string) $item,
+                        $stored
+                    ), fn (string $value): bool => $value !== '')));
+                }
+                unset($row);
+                continue;
+            }
             if (
                 !is_array($lookup)
                 || ($lookup['kind'] ?? 'static') !== 'table'

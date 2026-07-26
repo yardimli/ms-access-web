@@ -203,10 +203,12 @@ function hideFileScanOverlay() {
 async function refreshDatabaseWorkspace(database) {
     databasePromise = null;
     const db = await getDatabase();
+    currentDatabaseName = db.database || database;
     configureObjectMaps(db);
     renderObjectList(db);
     openTabs = [];
     currentView = '';
+    persistWorkspaceState();
     renderDocumentTabs();
     setActiveObject('');
     updateContextualRibbon('');

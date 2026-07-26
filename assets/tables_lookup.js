@@ -63,6 +63,7 @@ window.AcaciaDBLookupWizard = {
         return new Promise(resolve => {
             const existingLookup = normalizeLookupWizardMetadata(existingColumn?.lookup);
             const lockedKind = existingLookup?.kind || '';
+            const lockedMultipleStorage = existingLookup?.mode === 'multiple';
             const state = {
                 step: lockedKind ? 1 : 0,
                 kind: lockedKind || 'table',
@@ -77,6 +78,7 @@ window.AcaciaDBLookupWizard = {
                 label: existingColumn?.name || existingLookup?.label || defaultName,
                 friendlyName: existingColumn?.friendlyName || existingColumn?.label || existingLookup?.label || defaultFriendlyName || '',
                 allowMultiple: existingLookup?.mode === 'multiple',
+                multipleStorage: existingLookup?.storageMode || (existingLookup?.relationshipTable ? 'relationship' : 'json'),
                 limitToList: Boolean(existingLookup?.limitToList),
                 dataIntegrity: Boolean(existingLookup?.dataIntegrity),
                 cascadeDelete: Boolean(existingLookup?.cascadeDelete),
@@ -121,6 +123,12 @@ window.AcaciaDBLookupWizard = {
                 }
                 const sourceTable = db.tables?.[state.sourceObjectName];
                 return (sourceTable?.structure?.columns || []).map(column => column.name);
+            }
+
+            function sourcePrimaryKey() {
+                return state.sourceObjectType === 'table'
+                    ? (db.tables?.[state.sourceObjectName]?.structure?.primaryKey || '')
+                    : '';
             }
 
             function stepsForKind() {
@@ -175,17 +183,20 @@ window.AcaciaDBLookupWizard = {
                     };
                 }
 
+                const primaryKey = sourcePrimaryKey();
+                const keyColumn = primaryKey || state.keyColumn;
                 return {
                     kind: 'table',
                     sourceObjectType: state.sourceObjectType,
                     sourceObjectName: state.sourceObjectName,
-                    selectedFields: state.selectedFields,
+                    selectedFields: Array.from(new Set([keyColumn, ...state.selectedFields].filter(Boolean))),
                     displayColumns: tableDisplayColumns(),
-                    keyColumn: state.keyColumn,
+                    keyColumn,
                     hideKeyColumn: state.hideKeyColumn,
                     sort: state.sort.filter(item => item.field),
                     label: state.friendlyName || state.label,
                     allowMultiple: state.allowMultiple,
+                    storageMode: state.allowMultiple ? state.multipleStorage : 'column',
                     dataIntegrity: state.dataIntegrity,
                     cascadeDelete: state.cascadeDelete
                 };
@@ -315,7 +326,12 @@ window.AcaciaDBLookupWizard = {
             }
 
             function renderKeyStep() {
-                const fields = state.kind === 'static' ? staticColumnNames() : (state.selectedFields.length ? state.selectedFields : sourceFieldNames());
+                const primaryKey = sourcePrimaryKey();
+                const fields = state.kind === 'static'
+                    ? staticColumnNames()
+                    : primaryKey
+                        ? [primaryKey]
+                        : (state.selectedFields.length ? state.selectedFields : sourceFieldNames());
                 if (!state.keyColumn || !fields.includes(state.keyColumn)) {
                     state.keyColumn = fields[0] || '';
                 }
@@ -366,7 +382,12 @@ window.AcaciaDBLookupWizard = {
                                 <label class="lookup-radio-line disabled"><input type="radio" disabled ${!state.cascadeDelete ? 'checked' : ''}> Restrict Delete</label>
                             `}
                             <p>Do you want to store multiple values for this lookup?</p>
-                            <label class="lookup-check-line"><input type="checkbox" data-allow-multiple ${state.allowMultiple ? 'checked' : ''}> Allow Multiple Values</label>
+                            <label class="lookup-check-line ${existingLookup ? 'disabled' : ''}"><input type="checkbox" data-allow-multiple ${state.allowMultiple ? 'checked' : ''} ${existingLookup ? 'disabled' : ''}> Allow Multiple Values</label>
+                            ${state.kind === 'table' && state.allowMultiple ? `
+                                <p>Should AcaciaDB create an external relational table for this one-to-many relationship?</p>
+                                <label class="lookup-radio-line"><input type="radio" name="multipleStorage" value="relationship" ${state.multipleStorage === 'relationship' ? 'checked' : ''} ${lockedMultipleStorage ? 'disabled' : ''}> Yes, create an external relationship table and show a virtual lookup field.</label>
+                                <label class="lookup-radio-line"><input type="radio" name="multipleStorage" value="json" ${state.multipleStorage === 'json' ? 'checked' : ''} ${lockedMultipleStorage ? 'disabled' : ''}> No, store selected primary keys and display values as JSON in this table.</label>
+                            ` : ''}
                             <p>Those are all the answers the wizard needs to create your lookup field.</p>
                             <p class="dialog-error" data-wizard-error hidden></p>
                         </div>
@@ -507,7 +528,11 @@ window.AcaciaDBLookupWizard = {
                 });
                 dialog.querySelector('[data-allow-multiple]')?.addEventListener('change', event => {
                     state.allowMultiple = event.target.checked;
+                    render();
                 });
+                dialog.querySelectorAll('input[name="multipleStorage"]').forEach(input => input.addEventListener('change', () => {
+                    state.multipleStorage = input.value;
+                }));
             }
 
             function finish(value) {

@@ -335,12 +335,54 @@ async function bootstrapApp() {
     activateRibbonTab('home');
 
     try {
-        const db = await getDatabase();
+        const savedWorkspace = readWorkspaceState();
+        let db = await getDatabase();
+        if (savedWorkspace?.database && savedWorkspace.database !== db.database) {
+            try {
+                await postDatabaseAction('open', savedWorkspace.database);
+                databasePromise = null;
+                db = await getDatabase();
+            } catch (error) {
+                localStorage.removeItem(workspaceStateStorageKey);
+            }
+        }
+
+        currentDatabaseName = db.database || '';
         configureObjectMaps(db);
         renderObjectList(db);
         const databaseTitle = document.querySelector('#database-title');
         if (databaseTitle) databaseTitle.textContent = `${db.database || 'AcaciaDB'} : AcaciaDB`;
         document.title = `${db.database || 'Database'} - AcaciaDB`;
+
+        const availableViews = restorableViews(db);
+        const canRestore = savedWorkspace?.database === currentDatabaseName;
+        const savedTabs = canRestore
+            ? [...new Set(savedWorkspace.tabs)].filter(view => availableViews.has(view))
+            : [];
+
+        if (canRestore) {
+            if (!savedTabs.length) {
+                currentView = '';
+                openTabs = [];
+                renderDocumentTabs();
+                content.innerHTML = '<div class="p-6 text-neutral-500">Double-click an object to open it.</div>';
+                status.textContent = 'Ready';
+                persistWorkspaceState();
+                return;
+            }
+
+            openTabs = [];
+            for (const view of savedTabs) {
+                await loadView(view);
+            }
+            const restoredActiveView = savedTabs.includes(savedWorkspace.activeView)
+                ? savedWorkspace.activeView
+                : savedTabs[savedTabs.length - 1];
+            if (currentView !== restoredActiveView) {
+                await loadView(restoredActiveView);
+            }
+            return;
+        }
 
         const requestedView = app.dataset.initialView || '';
         const firstTableView = Object.keys(tableViewPairs)[0];
@@ -353,6 +395,9 @@ async function bootstrapApp() {
 
         content.innerHTML = '<div class="p-6 text-neutral-500">No database tables were found.</div>';
         status.textContent = 'Ready';
+        currentView = '';
+        openTabs = [];
+        persistWorkspaceState();
     } catch (error) {
         content.innerHTML = `<div class="p-6 text-red-700">Unable to load database: ${escapeHtml(error.message)}</div>`;
         status.textContent = 'Database Error';

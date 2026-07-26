@@ -88,6 +88,7 @@ const objectList = document.querySelector('#object-list');
 const statusViewButtons = document.querySelector('#status-view-buttons');
 
 let databasePromise = null;
+let currentDatabaseName = '';
 let currentView = app.dataset.initialView || 'table-customers';
 let openTabs = [];
 let currentRibbon = 'home';

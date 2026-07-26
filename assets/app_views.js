@@ -1,3 +1,49 @@
+const workspaceStateStorageKey = 'acaciadb.workspace.v1';
+
+function readWorkspaceState() {
+    try {
+        const state = JSON.parse(localStorage.getItem(workspaceStateStorageKey) || 'null');
+        if (!state || typeof state !== 'object') return null;
+        return {
+            database: String(state.database || ''),
+            tabs: Array.isArray(state.tabs) ? state.tabs.filter(view => typeof view === 'string') : [],
+            activeView: String(state.activeView || '')
+        };
+    } catch (error) {
+        return null;
+    }
+}
+
+function persistWorkspaceState() {
+    if (!currentDatabaseName) return;
+    try {
+        localStorage.setItem(workspaceStateStorageKey, JSON.stringify({
+            database: currentDatabaseName,
+            tabs: openTabs.map(tab => tab.view),
+            activeView: currentView
+        }));
+    } catch (error) {
+        // The workspace remains usable when browser storage is unavailable.
+    }
+}
+
+function restorableViews(db) {
+    const views = new Set();
+    Object.keys(db.tables || {}).forEach(name => {
+        const slug = objectSlug(name);
+        views.add(`table-${slug}`);
+        views.add(`design-${slug}`);
+    });
+    Object.keys(db.forms || {}).forEach(name => {
+        const slug = objectSlug(name);
+        views.add(`form-${slug}`);
+        views.add(`design-form-${slug}`);
+    });
+    Object.keys(db.queries || {}).forEach(name => views.add(`query-${objectSlug(name)}`));
+    Object.keys(db.reports || {}).forEach(name => views.add(`report-${objectSlug(name)}`));
+    return views;
+}
+
 function setActiveObject(view) {
     const objectView = designViewPairs[view] || formDesignViewPairs[view] || view;
     document.querySelectorAll('.object-link').forEach(link => {
@@ -219,6 +265,7 @@ async function loadView(view, options = {}) {
 
     currentView = view;
     statusModeOverride = null;
+    persistWorkspaceState();
     content.innerHTML = '<div class="p-6 text-neutral-500">Loading...</div>';
     renderDocumentTabs();
     const response = await fetch(`api/view.php?view=${encodeURIComponent(view)}`, {
@@ -246,6 +293,7 @@ async function loadView(view, options = {}) {
     if (activeTab) {
         activeTab.title = title;
     }
+    persistWorkspaceState();
     renderDocumentTabs();
     status.textContent = shell?.dataset.status || 'Ready';
     setActiveObject(view);
@@ -264,6 +312,7 @@ function closeActiveTab() {
 
     if (!openTabs.length) {
         currentView = '';
+        persistWorkspaceState();
         content.innerHTML = '<div class="p-6 text-neutral-500">Double-click an object to open it.</div>';
         status.textContent = 'Ready';
         renderDocumentTabs();

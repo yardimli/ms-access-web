@@ -154,6 +154,34 @@ function lookup_relationship_columns(array $columns): array
     }));
 }
 
+function multiple_lookup_keys(mixed $value): array
+{
+    if (is_array($value)) {
+        $items = $value;
+    } else {
+        $decoded = json_decode((string) ($value ?? ''), true);
+        $items = is_array($decoded) ? $decoded : explode(',', (string) ($value ?? ''));
+    }
+
+    return array_values(array_unique(array_filter(array_map(
+        fn ($item): string => trim(is_array($item) ? (string) ($item['key'] ?? '') : (string) $item),
+        $items
+    ), fn (string $value): bool => $value !== '')));
+}
+
+function multiple_lookup_json(mixed $value, array $lookup): string
+{
+    $labels = [];
+    foreach ((array) ($lookup['source'] ?? []) as $option) {
+        $labels[lookup_option_value($option)] = lookup_option_label($option);
+    }
+
+    return json_encode(array_map(
+        fn (string $key): array => ['key' => $key, 'value' => $labels[$key] ?? $key],
+        multiple_lookup_keys($value)
+    ), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+}
+
 function sync_lookup_relationships(mysqli $db, array $columns, string $primaryKeyValue, array $row): void
 {
     foreach (lookup_relationship_columns($columns) as $column) {
@@ -165,10 +193,7 @@ function sync_lookup_relationships(mysqli $db, array $columns, string $primaryKe
 
         $localColumn = (string) $lookup['localKeyColumn'];
         $remoteColumn = (string) $lookup['remoteKeyColumn'];
-        $values = array_values(array_unique(array_filter(
-            array_map('trim', explode(',', (string) ($row[$column['name']] ?? ''))),
-            fn (string $value): bool => $value !== ''
-        )));
+        $values = multiple_lookup_keys($row[$column['name']] ?? '');
 
         $db->query(
             'DELETE FROM ' . db_identifier($relationshipTable) .
@@ -200,6 +225,7 @@ try {
     }
 
     [$columns, $primaryKey] = fetch_table_columns($db, $resolvedTable);
+    $columns = hydrate_lookup_metadata($db, $resolvedTable, $columns, $primaryKey);
     ensure_autonumber_primary_key($db, $resolvedTable, $primaryKey, $columns);
     $row = is_array($request['row'] ?? null) ? $request['row'] : [];
 
@@ -256,8 +282,14 @@ try {
 
             $lookup = $column['lookup'] ?? null;
             if (is_array($lookup) && ($lookup['kind'] ?? 'static') === 'table' && ($lookup['mode'] ?? 'single') === 'multiple') {
-                $normalizedValues[$name] = (string) ($row[$name] ?? '');
-                $assignments[] = db_identifier($name) . ' = NULL';
+                $normalizedValues[$name] = implode(',', multiple_lookup_keys($row[$name] ?? ''));
+                if (($lookup['storageMode'] ?? (!empty($lookup['relationshipTable']) ? 'relationship' : 'json')) === 'relationship') {
+                    if (empty($column['virtual'])) {
+                        $assignments[] = db_identifier($name) . ' = NULL';
+                    }
+                } else {
+                    $assignments[] = db_identifier($name) . ' = ' . sql_literal($db, multiple_lookup_json($row[$name] ?? '', $lookup));
+                }
                 continue;
             }
 
@@ -320,16 +352,26 @@ try {
     }
     $columnSql = [];
     $valueSql = [];
+    $normalizedInsertValues = [];
 
     foreach ($columns as $column) {
         $name = $column['name'];
         $lookup = $column['lookup'] ?? null;
         if (is_array($lookup) && ($lookup['kind'] ?? 'static') === 'table' && ($lookup['mode'] ?? 'single') === 'multiple') {
-            $columnSql[] = db_identifier($name);
-            $valueSql[] = 'NULL';
+            $normalizedInsertValues[$name] = implode(',', multiple_lookup_keys($row[$name] ?? ''));
+            if (($lookup['storageMode'] ?? (!empty($lookup['relationshipTable']) ? 'relationship' : 'json')) === 'relationship') {
+                if (empty($column['virtual'])) {
+                    $columnSql[] = db_identifier($name);
+                    $valueSql[] = 'NULL';
+                }
+            } else {
+                $columnSql[] = db_identifier($name);
+                $valueSql[] = sql_literal($db, multiple_lookup_json($row[$name] ?? '', $lookup));
+            }
             continue;
         }
         $value = normalize_record_value($row[$name] ?? null, $column);
+        $normalizedInsertValues[$name] = $value;
 
         if ($name === $primaryKey && $column['type'] === 'AutoNumber' && $value === null) {
             continue;
@@ -349,11 +391,12 @@ try {
     }
 
     $insertId = $db->insert_id;
-    if ($insertId && $primaryKey) {
-        sync_lookup_relationships($db, $columns, (string) $insertId, $row);
+    $insertedPrimaryValue = $insertId ?: ($normalizedInsertValues[$primaryKey] ?? null);
+    if ($insertedPrimaryValue !== null && $insertedPrimaryValue !== '' && $primaryKey) {
+        sync_lookup_relationships($db, $columns, (string) $insertedPrimaryValue, $normalizedInsertValues);
     }
-    $insertedRow = $insertId && $primaryKey
-        ? fetch_table_row_by_primary_key($db, $resolvedTable, $primaryKey, $insertId)
+    $insertedRow = $insertedPrimaryValue !== null && $primaryKey
+        ? fetch_table_row_by_primary_key($db, $resolvedTable, $primaryKey, $insertedPrimaryValue)
         : null;
 
     $totalRows = fetch_table_row_count($db, $resolvedTable);

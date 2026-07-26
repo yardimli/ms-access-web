@@ -161,18 +161,23 @@
 .fields-format-controls {
     display: grid;
     width: 238px;
+    min-width: 0;
     gap: 4px;
 }
 
 .fields-format-controls label {
     display: grid;
-    grid-template-columns: 76px 1fr;
+    min-width: 0;
+    grid-template-columns: 76px minmax(0, 1fr);
     align-items: center;
     gap: 5px;
     white-space: nowrap;
 }
 
 .fields-format-controls select {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
     height: 26px;
     border: 1px solid #b8b8b8;
     background: white;
@@ -306,6 +311,13 @@
 
 .fields-properties {
     min-width: 420px;
+}
+
+.fields-formatting {
+    flex: 0 0 258px;
+    width: 258px;
+    min-width: 258px;
+    overflow: hidden;
 }
 
 .fields-validation {
@@ -1518,6 +1530,10 @@
     display: inline-flex;
     align-items: center;
     gap: 3px;
+}
+
+.record-page-controls.is-hidden {
+    display: none;
 }
 
 .record-page-divider {

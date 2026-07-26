@@ -13,6 +13,7 @@ function initTableViews(db) {
         const pageSkipInput = view.querySelector('[data-page-skip]');
         const pageLimitInput = view.querySelector('[data-page-limit]');
         const pageTotal = view.querySelector('[data-page-total]');
+        const pageControls = view.querySelector('[data-page-controls]');
         const pagePrevious = view.querySelector('[data-page-nav="previous"]');
         const pageNext = view.querySelector('[data-page-nav="next"]');
         let activeIndex = 0;
@@ -77,6 +78,7 @@ function initTableViews(db) {
         function syncPagination(next = {}) {
             pagination = { ...pagination, ...next };
             tableDef.pagination = { ...pagination };
+            if (pageControls) pageControls.classList.toggle('is-hidden', pagination.total < 500);
             if (pageSkipInput) pageSkipInput.value = String(pagination.skip);
             if (pageLimitInput) pageLimitInput.value = String(pagination.limit);
             if (pageTotal) pageTotal.textContent = `Total rows: ${pagination.total.toLocaleString()}`;

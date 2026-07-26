@@ -196,6 +196,35 @@ function column_exists(mysqli $db, string $tableName, string $columnName): bool
     return fetch_column_definition($db, $tableName, $columnName) !== null;
 }
 
+function lookup_storage_mysql_type(array $lookup): ?string
+{
+    if (($lookup['kind'] ?? 'static') === 'table') {
+        if (($lookup['mode'] ?? 'single') === 'multiple') {
+            return ($lookup['storageMode'] ?? 'relationship') === 'relationship' ? null : 'JSON';
+        }
+        return (string) ($lookup['keyMysqlType'] ?? 'VARCHAR(255)');
+    }
+
+    if (($lookup['mode'] ?? 'single') === 'multiple') {
+        return 'TEXT';
+    }
+
+    return ($lookup['valueType'] ?? 'string') === 'integer' ? 'INT' : 'VARCHAR(255)';
+}
+
+function lookup_column_position(mysqli $db, string $tableName, string $afterColumn): int
+{
+    [$columns] = fetch_table_columns($db, $tableName);
+    if ($afterColumn !== '') {
+        foreach ($columns as $index => $column) {
+            if (strcasecmp((string) $column['name'], $afterColumn) === 0) {
+                return $index + 1;
+            }
+        }
+    }
+    return count($columns);
+}
+
 function column_definition_sql(array $column, ?string $comment = null): string
 {
     $sql = $column['column_type'];
@@ -278,12 +307,28 @@ function lookup_relationship_table_name(string $leftTable, string $rightTable): 
 
 function first_primary_key(mysqli $db, string $tableName): string
 {
-    [$columns, $primaryKey] = fetch_table_columns($db, $tableName);
-    if ($primaryKey !== '') {
-        return $primaryKey;
+    $stmt = $db->prepare(
+        'SELECT column_name
+         FROM information_schema.columns
+         WHERE table_schema = DATABASE()
+           AND table_name = ?
+           AND column_key = "PRI"
+         ORDER BY ordinal_position
+         LIMIT 1'
+    );
+    $stmt->bind_param('s', $tableName);
+    $stmt->execute();
+    return (string) ($stmt->get_result()->fetch_assoc()['column_name'] ?? '');
+}
+
+function lookup_key_mysql_type(mysqli $db, string $tableName, string $keyColumn): string
+{
+    $definition = fetch_column_definition($db, $tableName, $keyColumn);
+    if (!$definition) {
+        throw new RuntimeException('The lookup primary key definition was not found.');
     }
 
-    return $columns[0]['name'] ?? '';
+    return strtoupper((string) $definition['column_type']);
 }
 
 function normalize_lookup_config(mysqli $db, string $ownerTable, array $config, ?array $existingLookup = null): array
@@ -301,6 +346,11 @@ function normalize_lookup_config(mysqli $db, string $ownerTable, array $config, 
     }
 
     $mode = filter_var($config['allowMultiple'] ?? $config['multiple'] ?? false, FILTER_VALIDATE_BOOL) ? 'multiple' : 'single';
+    $existingMode = $existingLookup ? (string) ($existingLookup['mode'] ?? 'single') : '';
+    if ($existingLookup && $existingMode !== $mode) {
+        throw new RuntimeException('The relationship type of an existing lookup cannot be changed.');
+    }
+    $requestedStorageMode = (string) ($config['storageMode'] ?? ($existingLookup['storageMode'] ?? (!empty($existingLookup['relationshipTable']) ? 'relationship' : ($mode === 'multiple' ? 'json' : 'column'))));
     $lookup = [
         'kind' => $kind,
         'mode' => $mode,
@@ -336,7 +386,11 @@ function normalize_lookup_config(mysqli $db, string $ownerTable, array $config, 
         $sourceName = $resolvedSource;
         [$sourceColumns] = fetch_table_columns($db, $sourceName);
         $sourceColumnNames = array_map(fn (array $column): string => $column['name'], $sourceColumns);
-        $keyColumn = trim((string) ($config['keyColumn'] ?? first_primary_key($db, $sourceName)));
+        $sourcePrimaryKey = first_primary_key($db, $sourceName);
+        if ($sourcePrimaryKey === '') {
+            throw new RuntimeException('The lookup source table needs a primary key.');
+        }
+        $keyColumn = $sourcePrimaryKey;
         if (!in_array($keyColumn, $sourceColumnNames, true)) {
             throw new RuntimeException('Lookup key field was not found in the source table.');
         }
@@ -354,6 +408,7 @@ function normalize_lookup_config(mysqli $db, string $ownerTable, array $config, 
             'selectedFields' => $selectedFields,
             'displayColumns' => $displayColumns,
             'keyColumn' => $keyColumn,
+            'keyMysqlType' => lookup_key_mysql_type($db, $sourceName, $keyColumn),
             'hideKeyColumn' => filter_var($config['hideKeyColumn'] ?? true, FILTER_VALIDATE_BOOL),
             'dataIntegrity' => filter_var($config['dataIntegrity'] ?? false, FILTER_VALIDATE_BOOL),
             'cascadeDelete' => filter_var($config['cascadeDelete'] ?? false, FILTER_VALIDATE_BOOL),
@@ -361,26 +416,37 @@ function normalize_lookup_config(mysqli $db, string $ownerTable, array $config, 
         ];
 
         if ($mode === 'multiple') {
+            $storageMode = in_array($requestedStorageMode, ['json', 'relationship'], true) ? $requestedStorageMode : 'relationship';
+            if ($existingLookup && ($existingLookup['storageMode'] ?? (!empty($existingLookup['relationshipTable']) ? 'relationship' : 'json')) !== $storageMode) {
+                throw new RuntimeException('The storage method of an existing multi-value lookup cannot be changed.');
+            }
+            $lookup['storageMode'] = $storageMode;
             $ownerKey = first_primary_key($db, $ownerTable);
             if ($ownerKey === '') {
                 throw new RuntimeException('The current table needs a primary key before it can use a multi-value lookup.');
             }
-            $relationshipTable = lookup_relationship_table_name($ownerTable, $sourceName);
-            $localKeyColumn = substr(preg_replace('/[^A-Za-z0-9_]+/', '_', strtolower($ownerTable)) . '_' . $ownerKey, 0, 60);
-            $remoteKeyColumn = substr(preg_replace('/[^A-Za-z0-9_]+/', '_', strtolower($sourceName)) . '_' . $keyColumn, 0, 60);
-            $db->query(
-                'CREATE TABLE IF NOT EXISTS ' . db_identifier($relationshipTable) . ' (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    ' . db_identifier($localKeyColumn) . ' VARCHAR(255) NOT NULL,
-                    ' . db_identifier($remoteKeyColumn) . ' VARCHAR(255) NOT NULL,
-                    UNIQUE KEY ' . db_identifier('ux_' . substr($relationshipTable, 0, 48)) . ' (' . db_identifier($localKeyColumn) . ', ' . db_identifier($remoteKeyColumn) . '),
-                    INDEX ' . db_identifier('ix_' . substr($localKeyColumn, 0, 50)) . ' (' . db_identifier($localKeyColumn) . '),
-                    INDEX ' . db_identifier('ix_' . substr($remoteKeyColumn, 0, 50)) . ' (' . db_identifier($remoteKeyColumn) . ')
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
-            );
-            $lookup['relationshipTable'] = $relationshipTable;
-            $lookup['localKeyColumn'] = $localKeyColumn;
-            $lookup['remoteKeyColumn'] = $remoteKeyColumn;
+            if ($storageMode === 'relationship') {
+                $relationshipTable = lookup_relationship_table_name($ownerTable, $sourceName);
+                $localKeyColumn = substr(preg_replace('/[^A-Za-z0-9_]+/', '_', strtolower($ownerTable)) . '_' . $ownerKey, 0, 60);
+                $remoteKeyColumn = substr(preg_replace('/[^A-Za-z0-9_]+/', '_', strtolower($sourceName)) . '_' . $keyColumn, 0, 60);
+                $ownerKeyType = lookup_key_mysql_type($db, $ownerTable, $ownerKey);
+                $sourceKeyType = lookup_key_mysql_type($db, $sourceName, $keyColumn);
+                $db->query(
+                    'CREATE TABLE IF NOT EXISTS ' . db_identifier($relationshipTable) . ' (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        ' . db_identifier($localKeyColumn) . ' ' . $ownerKeyType . ' NOT NULL,
+                        ' . db_identifier($remoteKeyColumn) . ' ' . $sourceKeyType . ' NOT NULL,
+                        UNIQUE KEY ' . db_identifier('ux_' . substr($relationshipTable, 0, 48)) . ' (' . db_identifier($localKeyColumn) . ', ' . db_identifier($remoteKeyColumn) . '),
+                        INDEX ' . db_identifier('ix_' . substr($localKeyColumn, 0, 50)) . ' (' . db_identifier($localKeyColumn) . '),
+                        INDEX ' . db_identifier('ix_' . substr($remoteKeyColumn, 0, 50)) . ' (' . db_identifier($remoteKeyColumn) . ')
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
+                );
+                $lookup['relationshipTable'] = $relationshipTable;
+                $lookup['localKeyColumn'] = $localKeyColumn;
+                $lookup['remoteKeyColumn'] = $remoteKeyColumn;
+            }
+        } else {
+            $lookup['storageMode'] = 'column';
         }
 
         return $lookup;
@@ -398,6 +464,7 @@ function normalize_lookup_config(mysqli $db, string $ownerTable, array $config, 
         'keyColumn' => trim((string) ($config['keyColumn'] ?? '')),
         'hideKeyColumn' => filter_var($config['hideKeyColumn'] ?? true, FILTER_VALIDATE_BOOL),
         'sort' => array_values(array_filter((array) ($config['sort'] ?? []), fn ($sort): bool => is_array($sort) && !empty($sort['field']))),
+        'storageMode' => $mode === 'multiple' ? 'json' : 'column',
     ];
     if (($lookup['keyColumn'] ?? '') === '') {
         throw new RuntimeException('Choose the query field that uniquely identifies lookup rows.');
@@ -552,6 +619,8 @@ try {
         $comment = trim((string) ($request['comment'] ?? ''));
         $afterColumn = trim((string) ($request['afterColumn'] ?? ''));
         $lookup = normalize_lookup_config($db, $resolvedTable, is_array($request['lookup'] ?? null) ? $request['lookup'] : []);
+        $metadata = fetch_table_metadata($db, $resolvedTable);
+        $position = lookup_column_position($db, $resolvedTable, $afterColumn);
 
         if ($friendlyName === '') {
             $friendlyName = (string) ($lookup['label'] ?? '');
@@ -560,41 +629,39 @@ try {
             $friendlyName = label_from_column($fieldName);
         }
 
-        if (column_exists($db, $resolvedTable, $fieldName)) {
+        if (column_exists($db, $resolvedTable, $fieldName) || isset($metadata['columns'][$fieldName])) {
             throw new RuntimeException('A field with that name already exists.');
         }
 
         $afterClause = '';
-        if ($afterColumn !== '') {
+        if ($afterColumn !== '' && column_exists($db, $resolvedTable, $afterColumn)) {
             $afterColumn = validate_field_name($afterColumn);
-            if (!column_exists($db, $resolvedTable, $afterColumn)) {
-                throw new RuntimeException('The selected insertion field was not found.');
-            }
             $afterClause = ' AFTER ' . db_identifier($afterColumn);
         }
 
-        $mysqlType = 'VARCHAR(255)';
-        if (($lookup['kind'] ?? 'static') === 'table') {
-            $mysqlType = 'INT';
-        } elseif (($lookup['mode'] ?? 'single') === 'multiple') {
-            $mysqlType = 'TEXT';
+        $mysqlType = lookup_storage_mysql_type($lookup);
+        $virtual = $mysqlType === null;
+
+        if (!$virtual) {
+            $db->query(
+                'ALTER TABLE ' . db_identifier($resolvedTable) .
+                ' ADD COLUMN ' . db_identifier($fieldName) . ' ' . $mysqlType . ' NULL' .
+                ($comment !== '' ? " COMMENT '" . addslashes($comment) . "'" : '') .
+                $afterClause
+            );
         }
 
-        $db->query(
-            'ALTER TABLE ' . db_identifier($resolvedTable) .
-            ' ADD COLUMN ' . db_identifier($fieldName) . ' ' . $mysqlType . ' NULL' .
-            ($comment !== '' ? " COMMENT '" . addslashes($comment) . "'" : '') .
-            $afterClause
-        );
-
-        $metadata = fetch_table_metadata($db, $resolvedTable);
         $metadata['columns'] ??= [];
         $metadata['columns'][$fieldName] = array_merge($metadata['columns'][$fieldName] ?? [], [
             'friendlyName' => $friendlyName,
             'acaciadbType' => 'Lookup & Relationship',
-            'mysqlType' => $mysqlType,
+            'mysqlType' => $mysqlType ?? (string) ($lookup['keyMysqlType'] ?? ''),
             'acaciadbFormat' => '',
             'decimalPlaces' => 2,
+            'virtual' => $virtual,
+            'position' => $position,
+            'positionAfter' => $afterColumn,
+            'comment' => $comment,
             'lookup' => $lookup,
         ]);
         save_table_metadata($db, $resolvedTable, $metadata);
@@ -609,11 +676,12 @@ try {
 
     if ($action === 'updateLookupField') {
         $columnName = validate_field_name((string) ($request['column'] ?? ''));
-        if (!column_exists($db, $resolvedTable, $columnName)) {
+        $metadata = fetch_table_metadata($db, $resolvedTable);
+        $isPhysical = column_exists($db, $resolvedTable, $columnName);
+        $isVirtual = !empty($metadata['columns'][$columnName]['virtual']);
+        if (!$isPhysical && !$isVirtual) {
             throw new RuntimeException('Field was not found.');
         }
-
-        $metadata = fetch_table_metadata($db, $resolvedTable);
         $existingLookup = $metadata['columns'][$columnName]['lookup'] ?? null;
         if (!is_array($existingLookup)) {
             throw new RuntimeException('The selected field is not a lookup field.');
@@ -626,6 +694,7 @@ try {
         $metadata['columns'][$columnName]['friendlyName'] = $friendlyName;
         $metadata['columns'][$columnName]['acaciadbType'] = 'Lookup & Relationship';
         $metadata['columns'][$columnName]['lookup'] = $lookup;
+        $metadata['columns'][$columnName]['mysqlType'] = lookup_storage_mysql_type($lookup) ?? (string) ($lookup['keyMysqlType'] ?? '');
         save_table_metadata($db, $resolvedTable, $metadata);
 
         json_response([
@@ -638,17 +707,36 @@ try {
 
     if ($action === 'deleteColumn') {
         $columnName = validate_field_name((string) ($request['column'] ?? ''));
-        if (!column_exists($db, $resolvedTable, $columnName)) {
+        $metadata = fetch_table_metadata($db, $resolvedTable);
+        $isPhysical = column_exists($db, $resolvedTable, $columnName);
+        $isVirtual = !empty($metadata['columns'][$columnName]['virtual']);
+        if (!$isPhysical && !$isVirtual) {
             throw new RuntimeException('Field was not found.');
         }
-        if (fetch_column_key($db, $resolvedTable, $columnName) === 'PRI') {
+        if ($isPhysical && fetch_column_key($db, $resolvedTable, $columnName) === 'PRI') {
             throw new RuntimeException('Primary key fields cannot be deleted.');
         }
 
-        $db->query('ALTER TABLE ' . db_identifier($resolvedTable) . ' DROP COLUMN ' . db_identifier($columnName));
-        $metadata = fetch_table_metadata($db, $resolvedTable);
+        $relationshipTable = $isVirtual
+            ? (string) ($metadata['columns'][$columnName]['lookup']['relationshipTable'] ?? '')
+            : '';
+        if ($isPhysical) {
+            $db->query('ALTER TABLE ' . db_identifier($resolvedTable) . ' DROP COLUMN ' . db_identifier($columnName));
+        }
         unset($metadata['columns'][$columnName]);
         save_table_metadata($db, $resolvedTable, $metadata);
+        if ($relationshipTable !== '') {
+            $stillUsed = false;
+            foreach ((array) ($metadata['columns'] ?? []) as $definition) {
+                if (($definition['lookup']['relationshipTable'] ?? '') === $relationshipTable) {
+                    $stillUsed = true;
+                    break;
+                }
+            }
+            if (!$stillUsed && physical_table_exists($db, $relationshipTable)) {
+                $db->query('DROP TABLE ' . db_identifier($relationshipTable));
+            }
+        }
 
         json_response([
             'ok' => true,
