@@ -8,6 +8,9 @@ $appAssetVersion = max(array_map('filemtime', array_merge(
     glob(__DIR__ . '/assets/app_*.js'),
     [__DIR__ . '/assets/app.css']
 )));
+$tailwindAssetVersion = filemtime(__DIR__ . '/assets/tailwind.css');
+$themeAssetVersion = max(filemtime(__DIR__ . '/assets/theme.css'), filemtime(__DIR__ . '/assets/theme.js'));
+$brandAssetVersion = filemtime(__DIR__ . '/assets/acaciadb-icon.png');
 ?>
 <!doctype html>
 <html lang="en" translate="no" class="notranslate">
@@ -16,7 +19,14 @@ $appAssetVersion = max(array_map('filemtime', array_merge(
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="google" content="notranslate">
     <title>AcaciaDB Web Mockup</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="icon" type="image/png" href="assets/acaciadb-icon.png?v=<?= $brandAssetVersion ?>">
+    <script>
+        (() => {
+            const savedTheme = localStorage.getItem('acaciadb-theme');
+            const theme = savedTheme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+            document.documentElement.dataset.theme = theme;
+        })();
+    </script>
     <link rel="stylesheet" href="vendor/fontawesome/css/all.min.css">
     <link rel="stylesheet" href="assets/app.css?v=<?= $appAssetVersion ?>">
     <link rel="stylesheet" href="assets/tables.css?v=<?= $tableAssetVersion ?>">
@@ -24,12 +34,14 @@ $appAssetVersion = max(array_map('filemtime', array_merge(
     <link rel="stylesheet" href="assets/queries.css">
     <link rel="stylesheet" href="assets/reports.css">
     <link rel="stylesheet" href="assets/expression-builder.css">
+    <link rel="stylesheet" href="assets/tailwind.css?v=<?= $tailwindAssetVersion ?>">
 </head>
 <body class="h-screen w-screen overflow-hidden bg-white text-[13px] text-neutral-900">
     <div id="acaciadb-app" class="flex h-screen w-screen flex-col bg-white" data-initial-view="<?= htmlspecialchars($initialView, ENT_QUOTES) ?>">
         <header class="select-none">
-            <div class="flex h-8 items-center bg-[#a92f35] text-white">
+            <div class="flex h-8 items-center bg-access-red text-white">
                 <div class="flex h-full w-[168px] items-center gap-2 px-3">
+                    <img class="app-brand-icon" src="assets/acaciadb-icon.png?v=<?= $brandAssetVersion ?>" alt="AcaciaDB">
                     <button class="quick-btn" title="Save"><i class="fas fa-save"></i></button>
                     <button class="quick-btn opacity-50" title="Undo"><i class="fas fa-undo"></i></button>
                     <button class="quick-btn opacity-50" title="Redo"><i class="fas fa-redo"></i></button>
@@ -39,20 +51,22 @@ $appAssetVersion = max(array_map('filemtime', array_merge(
                 <div id="database-title" class="flex-1 truncate text-center text-xs">AcaciaDB</div>
                 <div class="flex h-full items-center gap-5 px-4">
                     <span class="text-xs">Lisa Washington</span>
+                    <button id="theme-toggle" class="theme-toggle win-btn" type="button" aria-label="Switch to dark mode" title="Switch to dark mode"><i class="fas fa-moon"></i></button>
                     <button class="win-btn" title="Minimize"><i class="fas fa-minus"></i></button>
                     <button class="win-btn" title="Maximize"><i class="far fa-square"></i></button>
                     <button class="win-btn" title="Close"><i class="fas fa-times"></i></button>
                 </div>
             </div>
 
-            <div class="flex h-11 items-end bg-[#a92f35] text-white">
+            <div class="flex h-11 items-end bg-access-red text-white">
                 <nav class="flex h-full items-end" id="standard-ribbon-tabs">
                     <button class="ribbon-tab px-5" data-ribbon="file">File</button>
                     <button class="ribbon-tab active px-5" data-ribbon="home">Home</button>
                     <button class="ribbon-tab px-5" data-ribbon="create">Create</button>
-                    <button class="ribbon-tab px-5" data-ribbon="external">External Data</button>
+                    <button class="ribbon-tab px-5" data-ribbon="import">Import</button>
+                    <button class="ribbon-tab px-5" data-ribbon="export">Export</button>
                     <button class="ribbon-tab px-5" data-ribbon="database">Database Tools</button>
-                    <button class="ribbon-tab px-5" data-ribbon="help">Help</button>
+                    <button class="ribbon-tab px-5" data-ribbon="text-formatting">Text Formatting</button>
                 </nav>
                 <nav class="contextual-ribbon-tabs hidden" id="table-tools-tabs" aria-label="Table Tools">
                     <button class="ribbon-tab table-context-tab px-5 hidden" data-ribbon="table-design" data-table-context="design">Design</button>
@@ -63,6 +77,9 @@ $appAssetVersion = max(array_map('filemtime', array_merge(
                     <button class="ribbon-tab form-context-tab px-5" data-ribbon="form-design">Design</button>
                     <button class="ribbon-tab form-context-tab px-5" data-ribbon="form-arrange">Arrange</button>
                     <button class="ribbon-tab form-context-tab px-5" data-ribbon="form-format">Format</button>
+                </nav>
+                <nav class="flex h-full items-end" id="help-ribbon-tab">
+                    <button class="ribbon-tab px-5" data-ribbon="help">Help</button>
                 </nav>
                 <div class="mb-3 ml-3 flex min-w-[260px] items-center gap-2 text-white/95">
                     <span class="text-lg leading-none">?</span>
@@ -83,7 +100,7 @@ $appAssetVersion = max(array_map('filemtime', array_merge(
                 <div class="border-b border-[#d0d0d0] p-2">
                     <label class="flex h-7 items-center border border-[#aab7c4] bg-white">
                         <input class="h-full flex-1 px-2 italic outline-none" value="Search..." aria-label="Search">
-                        <span class="grid h-full w-7 place-items-center border-l border-[#aab7c4] text-[#2070b8]"><i class="fas fa-search"></i></span>
+                        <span class="grid h-full w-7 place-items-center border-l border-[#aab7c4] text-access-blue"><i class="fas fa-search"></i></span>
                     </label>
                 </div>
                 <nav class="min-h-0 flex-1 overflow-auto p-2" id="object-list">
@@ -115,6 +132,7 @@ $appAssetVersion = max(array_map('filemtime', array_merge(
     <script src="assets/tables_ribbon.js?v=<?= $tableAssetVersion ?>"></script>
     <script src="assets/tables_grid.js?v=<?= $tableAssetVersion ?>"></script>
     <script src="assets/tables_editing.js?v=<?= $tableAssetVersion ?>"></script>
+    <script src="assets/tables_input_mask.js?v=<?= $tableAssetVersion ?>"></script>
     <script src="assets/tables_lookup.js?v=<?= $tableAssetVersion ?>"></script>
     <script src="assets/tables_datasheet.js?v=<?= $tableAssetVersion ?>"></script>
     <script src="assets/tables_design.js?v=<?= $tableAssetVersion ?>"></script>
@@ -129,5 +147,6 @@ $appAssetVersion = max(array_map('filemtime', array_merge(
     <script src="assets/app_ribbon.js?v=<?= $appAssetVersion ?>"></script>
     <script src="assets/app_views.js?v=<?= $appAssetVersion ?>"></script>
     <script src="assets/app_events.js?v=<?= $appAssetVersion ?>"></script>
+    <script src="assets/theme.js?v=<?= $themeAssetVersion ?>"></script>
 </body>
 </html>

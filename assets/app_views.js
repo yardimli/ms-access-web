@@ -302,10 +302,18 @@ async function loadView(view, options = {}) {
     await initCurrentView();
 }
 
-function closeActiveTab() {
+async function closeActiveTab() {
     const activeIndex = findTabIndex(currentView);
     if (activeIndex === -1) {
         return;
+    }
+
+    if (isTableDesignView(currentView)) {
+        const controller = window.acaciadbActiveDesignController;
+        if (controller?.isDirty?.()) {
+            const canClose = await controller.confirmClose?.();
+            if (!canClose) return;
+        }
     }
 
     openTabs.splice(activeIndex, 1);

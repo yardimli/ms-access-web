@@ -545,7 +545,7 @@ window.AcaciaDBLookupWizard = {
                 event.preventDefault();
                 finish(null);
             }, { once: true });
-            dialog.showModal();
+            showMovableModal(dialog);
             render();
         });
     }

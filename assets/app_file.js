@@ -51,6 +51,11 @@ function fileSidebarMarkup() {
     return `
         <aside class="file-backstage-sidebar">
             <button type="button" class="file-back-button" data-file-close title="Back to database"><i class="fas fa-arrow-left"></i></button>
+            <div class="file-brand">
+                <img src="assets/acaciadb-icon.png" alt="" aria-hidden="true">
+                <strong>AcaciaDB</strong>
+                <span>Desktop Database</span>
+            </div>
             ${item('home', 'fas fa-home', 'Home')}
             ${item('new', 'far fa-file', 'New')}
             ${item('open', 'far fa-folder-open', 'Open')}

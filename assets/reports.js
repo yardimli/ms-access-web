@@ -17,12 +17,12 @@
         const colors = ['#5b9bd5', '#ed7d31', '#70ad47', '#ffc000', '#9e67ab'];
 
         view.innerHTML = `
-            <div class="mx-auto min-h-[720px] w-[760px] bg-white p-10 shadow-xl">
-                <div class="border-b-4 border-[#a92f35] pb-4">
+            <div class="report-page mx-auto min-h-[720px] w-[760px] bg-white p-10 shadow-xl">
+                <div class="report-header border-b-4 border-[#a92f35] pb-4">
                     <h2 class="text-3xl font-semibold text-[#a92f35]">${escapeHtml(report.title || 'Report')}</h2>
                     <p class="text-neutral-500">${escapeHtml(report.period || '')}</p>
                 </div>
-                <div class="mt-8 grid grid-cols-3 gap-4 text-center">
+                <div class="report-summary-grid mt-8 grid grid-cols-3 gap-4 text-center">
                     ${(report.stats || []).map(stat => `
                         <div class="report-stat">
                             <span>${escapeHtml(stat.label)}</span>
@@ -44,7 +44,7 @@
                         `).join('')}
                     </tbody>
                 </table>
-                <div class="mt-12 h-40 border border-dashed border-[#9aa6b2] bg-[#f8fafc] p-4">
+                <div class="report-chart mt-12 h-40 border border-dashed border-[#9aa6b2] bg-[#f8fafc] p-4">
                     <div class="mb-3 text-sm font-semibold text-neutral-600">Sales by category</div>
                     <div class="flex h-24 items-end gap-4">
                         ${(report.chart || []).map((height, index) => `

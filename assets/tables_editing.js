@@ -82,6 +82,62 @@ function showValidationDialog(message) {
     });
 }
 
+function showLargeTextEditorDialog({ title, value, htmlMode = false }) {
+    return new Promise(resolve => {
+        const dialog = document.createElement('dialog');
+        dialog.className = 'acaciadb-dialog large-text-editor-dialog';
+        dialog.innerHTML = `
+            <form method="dialog">
+                <div class="acaciadb-dialog-title">
+                    <span>${escapeHtml(title)}</span>
+                    <button type="button" data-long-text-cancel aria-label="Close"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="acaciadb-dialog-body">
+                    <label class="large-text-editor-field">
+                        <span>${htmlMode ? 'HTML source' : 'Text'}</span>
+                        <textarea data-long-text-input rows="18" spellcheck="true">${escapeHtml(value)}</textarea>
+                    </label>
+                    <p class="dialog-help large-text-editor-help">Use Ctrl+Enter to save. Press Escape to cancel.</p>
+                </div>
+                <div class="dialog-actions">
+                    <button type="button" data-long-text-cancel>Cancel</button>
+                    <button class="primary" type="submit">Save</button>
+                </div>
+            </form>
+        `;
+
+        document.body.appendChild(dialog);
+        const textarea = dialog.querySelector('[data-long-text-input]');
+
+        dialog.querySelectorAll('[data-long-text-cancel]').forEach(button => {
+            button.addEventListener('click', () => dialog.close('cancel'));
+        });
+        dialog.querySelector('form').addEventListener('submit', event => {
+            event.preventDefault();
+            dialog.close('save');
+        });
+        textarea.addEventListener('keydown', event => {
+            if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+                event.preventDefault();
+                dialog.querySelector('form').requestSubmit();
+            }
+        });
+        dialog.addEventListener('cancel', event => {
+            event.preventDefault();
+            dialog.close('cancel');
+        });
+        dialog.addEventListener('close', () => {
+            const result = dialog.returnValue === 'save' ? textarea.value : null;
+            dialog.remove();
+            resolve(result);
+        }, { once: true });
+
+        showMovableModal(dialog);
+        textarea.focus();
+        textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+    });
+}
+
 function lookupOptionValue(option) {
     return typeof option === 'object' && option !== null ? String(option.key) : String(option);
 }
@@ -163,7 +219,7 @@ function shouldKeepCellEditorOpen(target) {
 }
 
 function enableEditableCells(container, rows, options = {}) {
-    function openCellEditor(cell) {
+    async function openCellEditor(cell) {
         if (!cell) {
             return false;
         }
@@ -193,6 +249,34 @@ function enableEditableCells(container, rows, options = {}) {
                 : isYesNoColumn(type)
                     ? (cell.querySelector('input[type="checkbox"]')?.checked ? '1' : '0')
                     : cell.textContent.trim();
+
+        if (isLargeTextColumn(columnDef)) {
+            const label = columnDef.label || columnDef.friendlyName || columnDef.name || column;
+            const editValue = isInsertRow || originalValue === '(New)' ? '' : String(originalValue ?? '');
+            const htmlMode = isHtmlTextColumn(columnDef.acaciadbType || columnDef.type);
+            const result = await showLargeTextEditorDialog({
+                title: `Edit ${label}`,
+                value: editValue,
+                htmlMode
+            });
+
+            if (result === null) {
+                return false;
+            }
+
+            const nextValue = normalizeCellValue(htmlMode ? sanitizeHtmlText(result) : result, type);
+            if (isInsertRow) {
+                options.onInsertEdit?.(column, nextValue);
+            } else {
+                options.onRowEdit?.(rowIndex, column, nextValue);
+                if (cell.isConnected) {
+                    cell.outerHTML = tableCellMarkup(columnDef, nextValue);
+                }
+            }
+            options.onClose?.();
+            return true;
+        }
+
         const editor = document.createElement('div');
         let input = document.createElement('input');
 
@@ -305,11 +389,11 @@ function enableEditableCells(container, rows, options = {}) {
         const cell = event.target.closest('td[data-column]');
         if (cell) {
             options.onSelectCell?.(cell);
-            openCellEditor(cell);
+            void openCellEditor(cell);
         }
     });
 
     container.addEventListener('acaciadb-edit-cell', event => {
-        openCellEditor(event.detail?.cell);
+        void openCellEditor(event.detail?.cell);
     });
 }

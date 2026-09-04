@@ -88,10 +88,6 @@ function ribbonCheckboxButton(command, label, options = {}) {
 function renderFieldsRibbon() {
     ribbon.innerHTML = `
         <div class="fields-ribbon">
-            <div class="fields-group fields-views" data-label="Views">
-                ${ribbonBigButton('design', 'View', { view: '@design', caret: true })}
-            </div>
-
             <div class="fields-group fields-add-delete" data-label="Add & Delete">
                 ${ribbonBigButton('text-field', 'Short Text')}
                 ${ribbonBigButton('number', 'Number')}
@@ -305,9 +301,6 @@ function designMini(icon, label, options = {}) {
 function renderTableDesignRibbon() {
     ribbon.innerHTML = `
         <div class="table-design-ribbon">
-            <div class="design-ribbon-group" data-label="Views">
-                ${designCommand('grid', 'View', { view: '@datasheet', caret: true })}
-            </div>
             <div class="design-ribbon-group design-tools-group" data-label="Tools">
                 ${designCommand('primary-key', 'Primary Key')}
                 ${designCommand('builder', 'Builder', { disabled: true })}

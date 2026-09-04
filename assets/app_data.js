@@ -67,7 +67,11 @@ async function postSchemaAction(payload) {
         throw new Error(data.error || 'Schema update failed.');
     }
 
-    window.acaciadbActiveTableController?.syncPagination?.(data.payload?.pagination);
+    const responseTable = String(data.table || '').toLowerCase();
+    const activeTable = String(page.table || '').toLowerCase();
+    if (!responseTable || !activeTable || responseTable === activeTable) {
+        window.acaciadbActiveTableController?.syncPagination?.(data.payload?.pagination);
+    }
 
     return data;
 }

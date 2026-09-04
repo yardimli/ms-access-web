@@ -105,6 +105,18 @@ function ribbonIcon(name) {
         relationships: 'fas fa-link',
         excel: 'fas fa-file-excel',
         acaciadb: 'fas fa-database',
+        sqlite: 'fas fa-database',
+        php: 'fab fa-php',
+        nodejs: 'fab fa-node-js',
+        mysql: 'fas fa-server',
+        airtable: 'fas fa-th',
+        supabase: 'fas fa-bolt',
+        planetscale: 'fas fa-globe',
+        neon: 'fas fa-leaf',
+        retool: 'fas fa-tools',
+        aws: 'fab fa-aws',
+        azure: 'fab fa-microsoft',
+        gcp: 'fas fa-cloud',
         odbc: 'fas fa-server',
         import: 'fas fa-file-import',
         export: 'fas fa-file-export',
@@ -538,9 +550,6 @@ function renderHomeRibbon() {
     closeCreateMenu();
     ribbon.innerHTML = `
         <div class="home-ribbon">
-            <div class="home-group" data-label="Views">
-                ${homeBig('design', 'View', { caret: true, menu: 'view' })}
-            </div>
             <div class="home-group" data-label="Clipboard">
                 ${homeBig('paste', 'Paste', { caret: true, menu: 'paste' })}
                 <div class="home-stack">
@@ -583,6 +592,14 @@ function renderHomeRibbon() {
                     ${homeMini('select', 'Select', { caret: true, menu: 'select' })}
                 </div>
             </div>
+        </div>
+    `;
+}
+
+function renderTextFormattingRibbon() {
+    closeCreateMenu();
+    ribbon.innerHTML = `
+        <div class="home-ribbon text-formatting-ribbon">
             <div class="home-group home-text-group" data-label="Text Formatting">
                 <div class="home-format-panel">
                     <div class="home-format-row">
@@ -613,12 +630,122 @@ function renderHomeRibbon() {
 
 function createCommand(icon, label, options = {}) {
     return `
-        <button class="create-command" type="button" data-command="${escapeHtml(icon)}" ${options.view ? `data-view="${options.view}"` : ''} ${options.menu ? `data-create-menu="${options.menu}"` : ''}>
+        <button class="create-command" type="button" data-command="${escapeHtml(icon)}" ${options.view ? `data-view="${options.view}"` : ''} ${options.menu ? `data-create-menu="${options.menu}"` : ''} ${options.tableMode ? `data-create-table-mode="${escapeHtml(options.tableMode)}"` : ''}>
             <span class="create-command-icon">${ribbonIcon(icon)}</span>
             <span>${escapeHtml(label)}</span>
             ${options.caret ? '<i class="fas fa-caret-down create-caret"></i>' : ''}
         </button>
     `;
+}
+
+function nextUntitledTableName(db) {
+    const names = new Set(Object.keys(db.tables || {}).map(name => name.toLowerCase()));
+    if (!names.has('untitled')) {
+        return 'untitled';
+    }
+
+    let suffix = 1;
+    while (names.has(`untitled-${suffix}`)) {
+        suffix += 1;
+    }
+    return `untitled-${suffix}`;
+}
+
+function isValidTableName(name) {
+    return /^[A-Za-z_][A-Za-z0-9_$ -]{0,63}$/.test(String(name || '').trim());
+}
+
+function showCreateTableDialog(defaultName, mode) {
+    return new Promise(resolve => {
+        const dialog = document.createElement('dialog');
+        dialog.className = 'acaciadb-dialog create-table-dialog';
+        dialog.innerHTML = `
+            <form method="dialog">
+                <div class="acaciadb-dialog-title">
+                    <span>${mode === 'design' ? 'Create Table in Design View' : 'Create Table'}</span>
+                    <button type="button" data-create-table-cancel aria-label="Close"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="acaciadb-dialog-body">
+                    <label class="dialog-field">
+                        <span>Table name</span>
+                        <input name="tableName" value="${escapeHtml(defaultName)}" maxlength="64" autocomplete="off" required>
+                    </label>
+                    <p class="dialog-help">The new table starts with an ID AutoNumber primary key.</p>
+                    <p class="dialog-error" data-create-table-error hidden></p>
+                </div>
+                <div class="dialog-actions">
+                    <button type="button" data-create-table-cancel>Cancel</button>
+                    <button class="primary" type="submit">Create</button>
+                </div>
+            </form>
+        `;
+
+        document.body.appendChild(dialog);
+        const form = dialog.querySelector('form');
+        const input = dialog.querySelector('input[name="tableName"]');
+        const error = dialog.querySelector('[data-create-table-error]');
+        const submit = dialog.querySelector('button[type="submit"]');
+        let createdTable = null;
+
+        dialog.querySelectorAll('[data-create-table-cancel]').forEach(button => {
+            button.addEventListener('click', () => dialog.close('cancel'));
+        });
+        form.addEventListener('submit', async event => {
+            event.preventDefault();
+            const tableName = input.value.trim();
+            if (!isValidTableName(tableName)) {
+                error.textContent = 'Start with a letter or underscore and use letters, numbers, spaces, underscores, dollar signs, or hyphens.';
+                error.hidden = false;
+                input.focus();
+                return;
+            }
+
+            try {
+                error.hidden = true;
+                submit.disabled = true;
+                submit.textContent = 'Creating...';
+                const response = await postSchemaAction({ action: 'createTable', name: tableName });
+                createdTable = response.table || tableName;
+                dialog.close('created');
+            } catch (createError) {
+                error.textContent = createError.message || 'The table could not be created.';
+                error.hidden = false;
+                submit.disabled = false;
+                submit.textContent = 'Create';
+                input.focus();
+                input.select();
+            }
+        });
+        dialog.addEventListener('cancel', event => {
+            event.preventDefault();
+            dialog.close('cancel');
+        });
+        dialog.addEventListener('close', () => {
+            const result = dialog.returnValue === 'created' ? createdTable : null;
+            dialog.remove();
+            resolve(result);
+        }, { once: true });
+
+        showMovableModal(dialog);
+        input.focus();
+        input.select();
+    });
+}
+
+async function createNewTable(mode = 'datasheet') {
+    const db = await getDatabase();
+    const tableName = await showCreateTableDialog(nextUntitledTableName(db), mode);
+    if (!tableName) {
+        return;
+    }
+
+    databasePromise = null;
+    const refreshedDb = await getDatabase();
+    configureObjectMaps(refreshedDb);
+    renderObjectList(refreshedDb);
+    status.textContent = `${tableName} created`;
+    const prefix = mode === 'design' ? 'design-' : 'table-';
+    await loadView(`${prefix}${objectSlug(tableName)}`);
 }
 
 function createMini(icon, label, options = {}) {
@@ -636,9 +763,8 @@ function renderCreateRibbon() {
     ribbon.innerHTML = `
         <div class="create-ribbon">
             <div class="create-group" data-label="Tables">
-                ${createCommand('table', 'Table')}
-                ${createCommand('design', 'Table Design', { view: 'table-detail' })}
-                ${createCommand('sharepoint', 'SharePoint Lists', { caret: true })}
+                ${createCommand('table', 'Table', { tableMode: 'datasheet' })}
+                ${createCommand('design', 'Table Design', { tableMode: 'design' })}
             </div>
             <div class="create-group" data-label="Queries">
                 ${createCommand('query-wizard', 'Query Wizard')}
@@ -675,6 +801,37 @@ function renderCreateRibbon() {
     `;
 }
 
+function compactRibbonGroups() {
+    const groups = ribbon.querySelectorAll('.ribbon-group, .home-group, .create-group, .fields-group, .design-ribbon-group, .form-ribbon-group');
+    const commandSelector = [
+        ':scope > button',
+        ':scope > .home-stack > button',
+        ':scope > .create-stack > button',
+        ':scope > .fields-stack > button',
+        ':scope > .design-stack > button',
+        ':scope > .form-ribbon-stack:not(.wide) > button'
+    ].join(', ');
+
+    groups.forEach(group => {
+        const commands = Array.from(group.querySelectorAll(commandSelector));
+        if (!commands.length) return;
+
+        commands.forEach(command => command.remove());
+        group.querySelectorAll(':scope > .home-stack, :scope > .create-stack, :scope > .fields-stack, :scope > .design-stack, :scope > .form-ribbon-stack:not(.wide)').forEach(stack => {
+            if (!stack.children.length) stack.remove();
+        });
+
+        const fragment = document.createDocumentFragment();
+        for (let index = 0; index < commands.length; index += 4) {
+            const stack = document.createElement('div');
+            stack.className = 'compact-ribbon-stack';
+            commands.slice(index, index + 4).forEach(command => stack.appendChild(command));
+            fragment.appendChild(stack);
+        }
+        group.insertBefore(fragment, group.firstChild);
+    });
+}
+
 
 function renderRibbon(name) {
     closeMoreFieldsMenu();
@@ -687,6 +844,11 @@ function renderRibbon(name) {
 
     if (name === 'create') {
         renderCreateRibbon();
+        return;
+    }
+
+    if (name === 'text-formatting') {
+        renderTextFormattingRibbon();
         return;
     }
 
@@ -718,9 +880,9 @@ function renderRibbon(name) {
 
     const groups = ribbons[name] || ribbons.home;
     ribbon.innerHTML = `<div class="ribbon-content">${groups.map(([label, commands]) => `
-        <div class="ribbon-group" data-label="${label}">
-            ${commands.map(([icon, text, view]) => `
-                <button class="ribbon-command" data-command="${escapeHtml(icon)}" ${view ? `data-view="${view}"` : ''}>
+        <div class="ribbon-group" data-label="${escapeHtml(label)}" aria-label="${escapeHtml(label)}">
+            ${commands.map(([icon, text, view, options = {}]) => `
+                <button class="ribbon-command" data-command="${escapeHtml(icon)}" ${view ? `data-view="${escapeHtml(view)}"` : ''} ${options.title ? `title="${escapeHtml(options.title)}"` : ''}>
                     <span class="icon">${ribbonIcon(icon)}</span>
                     <span>${escapeHtml(text)}</span>
                 </button>
@@ -782,5 +944,6 @@ function activateRibbonTab(name) {
         tab.classList.toggle('active', tab.dataset.ribbon === name);
     });
     renderRibbon(name);
+    compactRibbonGroups();
 }
 

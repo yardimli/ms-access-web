@@ -19,9 +19,6 @@ const designPropertyHelp = {
     required: 'Specifies whether this field must contain a value. Existing records must contain valid values before Required can be enabled.',
     allowZeroLength: 'Specifies whether an empty string is allowed. An empty string is different from a null value.',
     indexed: 'Creates an index to speed searches and sorting. A unique index also prevents duplicate values.',
-    unicodeCompression: 'Compresses Unicode text when the stored characters can be represented efficiently, reducing storage without changing the text.',
-    imeMode: 'Controls the Input Method Editor mode used when entering text for East Asian languages.',
-    imeSentenceMode: 'Controls how the Input Method Editor interprets sentence context while text is entered.',
     comment: 'A description of the field stored with the MariaDB column and displayed in Table Design View.',
     textAlign: 'Controls how values in this field are aligned when displayed in Datasheet View.',
     displayControl: 'The type of control used to display and edit this field. Text Box removes the lookup; List Box and Combo Box use lookup settings.',
@@ -67,7 +64,7 @@ function showDesignSaveDialog(tableName, descriptions, destructive) {
         dialog.querySelector('[data-dialog-discard]').addEventListener('click', () => dialog.close('discard'));
         dialog.querySelector('form').addEventListener('submit', event => { event.preventDefault(); dialog.close('save'); });
         dialog.addEventListener('close', () => { const result = dialog.returnValue || 'cancel'; dialog.remove(); resolve(result); }, { once: true });
-        dialog.showModal();
+        showMovableModal(dialog);
     });
 }
 
@@ -124,17 +121,14 @@ function initDesignViews(db) {
             if (['Number', 'Currency', 'Date/Time'].includes(column.type)) rows.push(['Format', 'acaciadbFormat', column.acaciadbFormat || '', 'text']);
             if (column.type === 'Number') rows.push(['Decimal Places', 'decimalPlaces', column.decimalPlaces ?? 'Auto', 'text']);
             rows.push(
-                ['Input Mask', 'inputMask', column.inputMask || '', 'text'],
+                ['Input Mask', 'inputMask', column.inputMask || '', 'inputMaskBuilder'],
                 ['Caption', 'friendlyName', column.friendlyName || '', 'text'],
                 ['Default Value', 'defaultExpression', column.defaultExpression || '', 'text'],
-                ['Validation Rule', 'validationRule', column.validationRule || '', 'text'],
+                ['Validation Rule', 'validationRule', column.validationJavascript || '', 'validationBuilder'],
                 ['Validation Text', 'validationText', column.validationText || '', 'text'],
                 ['Required', 'required', column.required ? 'Yes' : 'No', 'select', false, ['No', 'Yes']],
                 ['Allow Zero Length', 'allowZeroLength', column.allowZeroLength === false ? 'No' : 'Yes', 'select', column.type !== 'Short Text', ['No', 'Yes']],
                 ['Indexed', 'indexed', column.primaryKey || column.unique ? 'Yes (No Duplicates)' : column.indexed ? 'Yes (Duplicates OK)' : 'No', 'select', column.primaryKey, ['No', 'Yes (Duplicates OK)', 'Yes (No Duplicates)']],
-                ['Unicode Compression', 'unicodeCompression', column.type === 'Short Text' ? 'Yes' : '', 'select', column.type !== 'Short Text', ['No', 'Yes']],
-                ['IME Mode', 'imeMode', column.type === 'Short Text' ? 'No Control' : '', 'text', column.type !== 'Short Text'],
-                ['IME Sentence Mode', 'imeSentenceMode', column.type === 'Short Text' ? 'None' : '', 'text', column.type !== 'Short Text'],
                 ['Description', 'comment', column.comment || '', 'text'],
                 ['Text Align', 'textAlign', column.textAlign || 'General', 'select', false, ['General', 'Left', 'Center', 'Right']]
             );
@@ -142,11 +136,8 @@ function initDesignViews(db) {
         }
 
         function lookupProperties(column) {
-            if (!column || !designLookupTypes.has(column.type)) return [];
-            const lookup = column.lookup || {};
-            if (!column.lookup) {
-                return [['Display Control', 'displayControl', 'Text Box', 'select', false, ['Text Box', 'List Box', 'Combo Box']]];
-            }
+            if (!column?.lookup || !designLookupTypes.has(column.type)) return [];
+            const lookup = column.lookup;
             const sourceType = lookup.kind === 'table' ? 'Table/Query' : 'Value List';
             const rowSource = lookup.kind === 'table'
                 ? (lookup.rowSource || `${lookup.sourceObjectName || ''};${(lookup.displayColumns || []).join(',')}`)
@@ -172,7 +163,55 @@ function initDesignViews(db) {
         function propertyControl(key, value, kind, disabled, options = []) {
             const common = `data-field-property="${escapeHtml(key)}" ${disabled ? 'disabled' : ''}`;
             if (kind === 'select') return `<select ${common}>${options.map(option => `<option ${String(option) === String(value) ? 'selected' : ''}>${escapeHtml(option)}</option>`).join('')}</select>`;
+            if (kind === 'validationBuilder' || kind === 'inputMaskBuilder') {
+                const builder = kind === 'validationBuilder' ? 'validation' : 'input-mask';
+                const label = kind === 'validationBuilder' ? 'Open Expression Builder' : 'Open Input Mask Wizard';
+                return `<div class="property-builder-control"><input type="text" value="${escapeHtml(value)}" title="${escapeHtml(value)}" data-field-property="${escapeHtml(key)}" readonly><button type="button" data-field-builder="${builder}" title="${label}" aria-label="${label}"><i class="fas fa-ellipsis-h"></i></button></div>`;
+            }
             return `<input type="${kind === 'number' ? 'number' : 'text'}" value="${escapeHtml(value)}" ${common}>`;
+        }
+
+        async function openValidationRuleBuilder() {
+            const column = selectedColumn();
+            if (!column || !window.ExpressionBuilder?.open) return;
+            const result = await window.ExpressionBuilder.open({
+                tableName,
+                fieldName: column.name,
+                purpose: 'validation',
+                expression: column.validationRule || (column.name ? `[${column.name}]` : ''),
+                javascript: column.validationJavascript || '',
+                interpretNatural: Boolean(column.validationInterpretNatural),
+                columns: visibleColumns().map(field => ({
+                    name: field.name,
+                    label: field.friendlyName || field.name,
+                    type: field.type,
+                    mysqlType: field.mysqlType || field.actualMysqlType || ''
+                }))
+            });
+            if (!result) return;
+            column.validationRule = result.expression;
+            column.validationJavascript = result.javascript;
+            column.validationInterpretNatural = Boolean(result.interpretNatural);
+            renderFieldProperties();
+            status.textContent = `Validation rule updated for ${column.name}`;
+        }
+
+        async function openInputMaskWizard() {
+            const column = selectedColumn();
+            if (!column || !window.AcaciaDBInputMaskWizard?.open) return;
+            const result = await window.AcaciaDBInputMaskWizard.open({
+                name: column.inputMaskName || '',
+                mask: column.inputMask || '',
+                placeholder: column.inputMaskPlaceholder ?? '_',
+                storeSymbols: column.inputMaskStoreSymbols !== false
+            });
+            if (!result) return;
+            column.inputMask = result.mask;
+            column.inputMaskName = result.name;
+            column.inputMaskPlaceholder = result.placeholder;
+            column.inputMaskStoreSymbols = result.storeSymbols;
+            renderFieldProperties();
+            status.textContent = `Input mask updated for ${column.name}`;
         }
 
         function renderFieldProperties() {
@@ -180,7 +219,9 @@ function initDesignViews(db) {
             const host = view.querySelector('[data-field-property-grid]');
             if (!host || !column) return;
             const lookupTab = view.querySelector('[data-field-tab="lookup"]');
-            lookupTab.disabled = false;
+            const hasLookup = Boolean(column.lookup);
+            if (lookupTab) lookupTab.disabled = !hasLookup;
+            if (!hasLookup && activeFieldTab === 'lookup') activeFieldTab = 'general';
             view.querySelectorAll('[data-field-tab]').forEach(button => button.classList.toggle('active', button.dataset.fieldTab === activeFieldTab));
             const rows = activeFieldTab === 'lookup' ? lookupProperties(column) : generalProperties(column);
             host.classList.toggle('empty', rows.length === 0);
@@ -386,7 +427,7 @@ function initDesignViews(db) {
                 if (event.target.closest('[data-dialog-close]')) dialog.close();
             });
             dialog.addEventListener('close', () => dialog.remove(), { once: true });
-            dialog.showModal();
+            showMovableModal(dialog);
         }
 
         function showRowMenu(event, index) {
@@ -449,13 +490,17 @@ function initDesignViews(db) {
             return columns.filter(columnChanged).map(column => ({
                 originalName: column.originalName, name: column.name, type: column.type, comment: column.comment || '', friendlyName: column.friendlyName || '',
                 required: Boolean(column.required), indexed: Boolean(column.indexed), unique: Boolean(column.unique), format: column.acaciadbFormat || '',
-                primaryKey: Boolean(column.primaryKey), decimalPlaces: column.decimalPlaces ?? 2, lookup: normalizeLookup(column), isNew: Boolean(column.isNew), deleted: Boolean(column.deleted)
+                primaryKey: Boolean(column.primaryKey), decimalPlaces: column.decimalPlaces ?? 2, lookup: normalizeLookup(column),
+                inputMask: column.inputMask || '', inputMaskName: column.inputMaskName || '', inputMaskPlaceholder: column.inputMaskPlaceholder ?? '_',
+                inputMaskStoreSymbols: column.inputMaskStoreSymbols !== false, validationRule: column.validationRule || '',
+                validationJavascript: column.validationJavascript || '', validationInterpretNatural: Boolean(column.validationInterpretNatural),
+                isNew: Boolean(column.isNew), deleted: Boolean(column.deleted)
             }));
         }
 
         const isDirty = () => designChanges().length > 0 || JSON.stringify(tableProperties) !== JSON.stringify(originalTableProperties);
 
-        async function saveDesign() {
+        async function saveDesign({ promptForConfirmation = true } = {}) {
             const changes = designChanges();
             if (!changes.length && JSON.stringify(tableProperties) === JSON.stringify(originalTableProperties)) return true;
             const invalid = visibleColumns().find(column => !/^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(column.name));
@@ -481,10 +526,12 @@ function initDesignViews(db) {
             if (nextPrimaryKey && nextPrimaryKey !== tableDef.structure.primaryKey) {
                 descriptions.unshift(`Move the primary key from ${tableDef.structure.primaryKey || '(none)'} to ${nextPrimaryKey}`);
             }
-            const destructive = changes.some(change => change.deleted || (!change.isNew && originalColumns.find(column => column.originalName === change.originalName)?.type !== change.type));
-            const decision = await showDesignSaveDialog(tableName, descriptions.length ? descriptions : ['Update table properties'], destructive);
-            if (decision === 'discard') return true;
-            if (decision !== 'save') return false;
+            if (promptForConfirmation) {
+                const destructive = changes.some(change => change.deleted || (!change.isNew && originalColumns.find(column => column.originalName === change.originalName)?.type !== change.type));
+                const decision = await showDesignSaveDialog(tableName, descriptions.length ? descriptions : ['Update table properties'], destructive);
+                if (decision === 'discard') return true;
+                if (decision !== 'save') return false;
+            }
             try {
                 status.textContent = 'Saving table design...';
                 await postSchemaAction({
@@ -503,6 +550,22 @@ function initDesignViews(db) {
                 status.textContent = 'Table design was not saved';
                 return false;
             }
+        }
+
+        async function confirmClose() {
+            if (!isDirty()) return true;
+            const decision = await showChoiceDialog({
+                title: `Unsaved Table Design: ${tableName}`,
+                message: `The design for ${tableName} has unsaved changes. Apply the changes before closing?`,
+                choices: [
+                    { value: 'cancel', label: 'Cancel' },
+                    { value: 'abandon', label: 'Abandon Changes' },
+                    { value: 'apply', label: 'Apply Changes', primary: true }
+                ]
+            });
+            if (decision === 'abandon') return true;
+            if (decision !== 'apply') return false;
+            return saveDesign({ promptForConfirmation: false });
         }
 
         function togglePropertySheet(force) {
@@ -529,6 +592,9 @@ function initDesignViews(db) {
         view.addEventListener('click', event => {
             const row = event.target.closest('[data-design-row]');
             if (row) selectDesignRow(Number(row.dataset.designRow));
+            const builder = event.target.closest('[data-field-builder]');
+            if (builder?.dataset.fieldBuilder === 'validation') void openValidationRuleBuilder();
+            if (builder?.dataset.fieldBuilder === 'input-mask') void openInputMaskWizard();
             const tab = event.target.closest('[data-field-tab]');
             if (tab && !tab.disabled) { activeFieldTab = tab.dataset.fieldTab; renderFieldProperties(); }
             if (event.target.closest('.property-close')) togglePropertySheet(false);
@@ -610,6 +676,7 @@ function initDesignViews(db) {
             tableName,
             isDirty,
             saveDesign,
+            confirmClose,
             togglePropertySheet,
             openIndexesDialog,
             insertSelectedField: () => insertField(selectedIndex - 1),

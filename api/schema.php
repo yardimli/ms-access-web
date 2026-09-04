@@ -29,6 +29,19 @@ function validate_field_name(string $name): string
     return $name;
 }
 
+function validate_table_name(string $name): string
+{
+    $name = trim($name);
+    if (!preg_match('/^[A-Za-z_][A-Za-z0-9_$ -]{0,63}$/', $name)) {
+        throw new RuntimeException('Table names must start with a letter or underscore and contain only letters, numbers, spaces, underscores, dollar signs, or hyphens.');
+    }
+    if (in_array(strtolower($name), ['acaciadb_object_definitions', 'acaciadb_column_history'], true)
+        || str_ends_with(strtolower($name), '_relationship')) {
+        throw new RuntimeException('That table name is reserved by AcaciaDB.');
+    }
+    return $name;
+}
+
 function mysql_type_for_acaciadb_type(string $type): string
 {
     return match ($type) {
@@ -565,6 +578,40 @@ try {
     $db = db_connect();
     $request = schema_request();
     $action = $request['action'] ?? '';
+
+    if ($action === 'createTable') {
+        $tableName = validate_table_name((string) ($request['name'] ?? ''));
+        ensure_acaciadb_storage($db);
+        if (physical_table_exists($db, $tableName)) {
+            throw new RuntimeException('A table with that name already exists.');
+        }
+
+        $db->query(
+            'CREATE TABLE ' . db_identifier($tableName) . ' (' .
+            db_identifier('ID') . ' INT NOT NULL AUTO_INCREMENT PRIMARY KEY' .
+            ') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
+        );
+        save_table_metadata($db, $tableName, [
+            'columns' => [
+                'ID' => [
+                    'friendlyName' => '',
+                    'acaciadbType' => 'AutoNumber',
+                    'mysqlType' => 'INT',
+                    'acaciadbFormat' => '',
+                    'decimalPlaces' => 0,
+                ],
+            ],
+            'tableProperties' => [],
+        ]);
+
+        json_response([
+            'ok' => true,
+            'table' => $tableName,
+            'payload' => schema_table_payload($db, $tableName, $request),
+        ]);
+        exit;
+    }
+
     $resolvedTable = resolve_table_name($db, (string) ($request['table'] ?? ''));
 
     if (!$resolvedTable) {
@@ -698,6 +745,13 @@ try {
                 'acaciadbFormat' => (string) ($change['format'] ?? default_acaciadb_format_for_type($acaciadbType)),
                 'decimalPlaces' => max(0, min(6, (int) ($change['decimalPlaces'] ?? 2))),
                 'lookup' => is_array($change['lookup'] ?? null) ? $change['lookup'] : null,
+                'inputMask' => (string) ($change['inputMask'] ?? ''),
+                'inputMaskName' => (string) ($change['inputMaskName'] ?? ''),
+                'inputMaskPlaceholder' => (string) ($change['inputMaskPlaceholder'] ?? '_'),
+                'inputMaskStoreSymbols' => filter_var($change['inputMaskStoreSymbols'] ?? true, FILTER_VALIDATE_BOOL),
+                'validationRule' => (string) ($change['validationRule'] ?? ''),
+                'validationJavascript' => (string) ($change['validationJavascript'] ?? ''),
+                'validationInterpretNatural' => filter_var($change['validationInterpretNatural'] ?? false, FILTER_VALIDATE_BOOL),
             ]);
         }
 

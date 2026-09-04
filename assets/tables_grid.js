@@ -1,3 +1,48 @@
+function showMovableModal(dialog) {
+    if (dialog.dataset.movableModal !== 'true') {
+        dialog.dataset.movableModal = 'true';
+        let drag = null;
+
+        dialog.addEventListener('pointerdown', event => {
+            const handle = event.target.closest('.acaciadb-dialog-title, .lookup-wizard-title, .expression-builder-title');
+            if (event.button !== 0 || !handle || !dialog.contains(handle) || event.target.closest('button')) return;
+            const bounds = dialog.getBoundingClientRect();
+            dialog.style.left = `${bounds.left}px`;
+            dialog.style.top = `${bounds.top}px`;
+            dialog.style.transform = 'none';
+            drag = {
+                pointerId: event.pointerId,
+                offsetX: event.clientX - bounds.left,
+                offsetY: event.clientY - bounds.top
+            };
+            dialog.setPointerCapture?.(event.pointerId);
+            event.preventDefault();
+        });
+
+        dialog.addEventListener('pointermove', event => {
+            if (!drag || event.pointerId !== drag.pointerId) return;
+            const bounds = dialog.getBoundingClientRect();
+            const maxLeft = Math.max(0, window.innerWidth - bounds.width);
+            const maxTop = Math.max(0, window.innerHeight - bounds.height);
+            dialog.style.left = `${Math.min(maxLeft, Math.max(0, event.clientX - drag.offsetX))}px`;
+            dialog.style.top = `${Math.min(maxTop, Math.max(0, event.clientY - drag.offsetY))}px`;
+        });
+
+        const stopDragging = event => {
+            if (!drag || event.pointerId !== drag.pointerId) return;
+            if (dialog.hasPointerCapture?.(event.pointerId)) dialog.releasePointerCapture(event.pointerId);
+            drag = null;
+        };
+        dialog.addEventListener('pointerup', stopDragging);
+        dialog.addEventListener('pointercancel', stopDragging);
+    }
+
+    dialog.style.removeProperty('left');
+    dialog.style.removeProperty('top');
+    dialog.style.removeProperty('transform');
+    dialog.showModal();
+}
+
 function isNumericColumn(type) {
     return ['AutoNumber', 'Number', 'Large Number', 'Currency'].includes(type);
 }
@@ -16,6 +61,28 @@ function coerceYesNo(value) {
 
 function isHtmlTextColumn(type) {
     return type === 'HTML Text' || type === 'Rich Text';
+}
+
+function isLargeTextColumn(column = {}) {
+    if (column.lookup) {
+        return false;
+    }
+
+    const acaciadbType = String(column.acaciadbType || column.type || '').trim().toLowerCase();
+    const mysqlType = String(column.actualMysqlType || column.mysqlType || '').trim().toLowerCase();
+    const largeTextTypes = new Set([
+        'long text',
+        'medium text',
+        'memo',
+        'html text',
+        'rich text',
+        'text',
+        'mediumtext',
+        'longtext'
+    ]);
+
+    return largeTextTypes.has(acaciadbType)
+        || /^(?:tinytext|text|mediumtext|longtext)(?:\b|\()/i.test(mysqlType);
 }
 
 function sanitizeHtmlText(value) {
@@ -92,6 +159,7 @@ function tableCellMarkup(column, value, options = {}) {
     if (isNumericColumn(column.type)) classes.push('numeric-cell');
     if (isYesNoColumn(column.type)) classes.push('yes-no-cell');
     if (isHtmlTextColumn(column.type)) classes.push('html-text-cell');
+    if (isLargeTextColumn(column)) classes.push('large-text-cell');
     if (options.placeholder) classes.push('new-record-cell');
 
     const attrs = [
@@ -99,6 +167,7 @@ function tableCellMarkup(column, value, options = {}) {
         `data-column="${escapeHtml(column.name)}"`,
         `data-type="${escapeHtml(column.type)}"`
     ];
+    if (isLargeTextColumn(column)) attrs.push('title="Double-click to edit long text"');
     if (options.insert) attrs.push('data-insert-cell="true"');
 
     const displayValue = value === '(New)' ? '(New)' : formatColumnValue(column, value);
@@ -336,7 +405,7 @@ function showColumnDialog({
             resolve(null);
         });
 
-        dialog.showModal();
+        showMovableModal(dialog);
         input.focus();
         input.select();
     });
@@ -381,7 +450,7 @@ function showMessageDialog({ title, message, confirmText = 'OK' }) {
             dialog.close();
         });
         dialog.addEventListener('close', finish, { once: true });
-        dialog.showModal();
+        showMovableModal(dialog);
     });
 
     return openMessageDialogPromise;
@@ -419,7 +488,7 @@ function showConfirmDialog({ title, message, confirmText = 'Delete', cancelText 
             dialog.remove();
             resolve(confirmed);
         }, { once: true });
-        dialog.showModal();
+        showMovableModal(dialog);
     });
 }
 
@@ -458,7 +527,7 @@ function showChoiceDialog({ title, message, choices = [] }) {
             dialog.remove();
             resolve(value);
         }, { once: true });
-        dialog.showModal();
+        showMovableModal(dialog);
     });
 }
 
@@ -497,7 +566,7 @@ function showColumnHistoryDialog({ tableName, columnName, history = [] }) {
         button.addEventListener('click', () => dialog.close(), { once: true });
     });
     dialog.addEventListener('close', () => dialog.remove(), { once: true });
-    dialog.showModal();
+    showMovableModal(dialog);
 }
 
 function nextSortDirection(current) {

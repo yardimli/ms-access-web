@@ -188,48 +188,6 @@
         return payload;
     }
 
-    function enableDialogDrag(dialog) {
-        const title = dialog.querySelector('.expression-builder-title');
-        if (!title) {
-            return;
-        }
-
-        title.addEventListener('pointerdown', event => {
-            if (event.button !== 0 || event.target.closest('button')) {
-                return;
-            }
-
-            const rect = dialog.getBoundingClientRect();
-            const offsetX = event.clientX - rect.left;
-            const offsetY = event.clientY - rect.top;
-
-            dialog.style.position = 'fixed';
-            dialog.style.margin = '0';
-            dialog.style.left = `${rect.left}px`;
-            dialog.style.top = `${rect.top}px`;
-            title.setPointerCapture?.(event.pointerId);
-
-            const move = moveEvent => {
-                const maxLeft = Math.max(0, window.innerWidth - rect.width);
-                const maxTop = Math.max(0, window.innerHeight - rect.height);
-                const nextLeft = Math.min(maxLeft, Math.max(0, moveEvent.clientX - offsetX));
-                const nextTop = Math.min(maxTop, Math.max(0, moveEvent.clientY - offsetY));
-                dialog.style.left = `${nextLeft}px`;
-                dialog.style.top = `${nextTop}px`;
-            };
-
-            const stop = stopEvent => {
-                title.releasePointerCapture?.(stopEvent.pointerId);
-                window.removeEventListener('pointermove', move);
-                window.removeEventListener('pointerup', stop);
-            };
-
-            window.addEventListener('pointermove', move);
-            window.addEventListener('pointerup', stop, { once: true });
-            event.preventDefault();
-        });
-    }
-
     function openExpressionBuilder(options = {}) {
         const template = document.getElementById('template-expression-builder');
         if (!template) {
@@ -602,7 +560,6 @@
         });
 
         document.body.appendChild(dialog);
-        enableDialogDrag(dialog);
         renderBrowser();
         updatePreview();
         if (!generatedJavascript) {
@@ -623,7 +580,7 @@
                 dialog.remove();
                 resolve(value);
             }, { once: true });
-            dialog.showModal();
+            showMovableModal(dialog);
             textarea.focus();
             textarea.setSelectionRange(textarea.value.length, textarea.value.length);
         });

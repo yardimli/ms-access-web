@@ -25,6 +25,12 @@ document.addEventListener('click', async event => {
         closeCreateMenu();
     }
 
+    const createTableButton = event.target.closest('[data-create-table-mode]');
+    if (createTableButton) {
+        await createNewTable(createTableButton.dataset.createTableMode || 'datasheet');
+        return;
+    }
+
     const homeMenuItem = event.target.closest('[data-home-menu-item]');
     if (homeMenuItem && event.target.closest('.home-menu')) {
         const owner = createMenu?.dataset.owner?.replace('home-', '') || '';

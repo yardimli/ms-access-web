@@ -1,10 +1,8 @@
 const ribbons = {
     home: [
-        ['Views', [['grid', 'View', '@datasheet'], ['design', 'Design View', '@design']]],
         ['Clipboard', [['paste', 'Paste'], ['cut', 'Cut'], ['copy', 'Copy']]],
         ['Sort & Filter', [['filter', 'Filter'], ['sort-asc', 'Ascending'], ['sort-desc', 'Descending'], ['find', 'Find']]],
-        ['Records', [['new', 'New'], ['delete', 'Delete'], ['refresh', 'Refresh']]],
-        ['Text Formatting', [['bold', 'Bold'], ['italic', 'Italic'], ['align', 'Align']]]
+        ['Records', [['new', 'New'], ['delete', 'Delete'], ['refresh', 'Refresh']]]
     ],
     create: [
         ['Tables', [['table', 'Customers', 'table-customers'], ['design', 'Table Design', 'table-detail']]],
@@ -12,16 +10,51 @@ const ribbons = {
         ['Queries', [['query', 'Open Orders', 'query-open-orders'], ['query', 'Sales Region', 'query-sales-region']]],
         ['Reports', [['report', 'Invoice Summary', 'report']]]
     ],
-    external: [
-        ['Import & Link', [['import', 'Saved Imports'], ['excel', 'Excel'], ['acaciadb', 'AcaciaDB'], ['odbc', 'ODBC'], ['more', 'More']]],
-        ['Export', [['export', 'Saved Exports'], ['excel', 'Excel'], ['text', 'Text File'], ['email', 'Email']]]
+    import: [
+        ['Import & Link', [
+            ['excel', 'Excel'], ['acaciadb', 'AcaciaDB'], ['text', 'Text File'], ['sqlite', 'SQLite']
+        ]],
+        ['Application Connectors', [
+            ['php', 'PHP Connector'], ['nodejs', 'Node.js Connector'], ['mysql', 'Direct MySQL']
+        ]],
+        ['Mid-Market & Scale-Up Platforms', [
+            ['airtable', 'Airtable', null, { title: 'Spreadsheet-database hybrid for relational workflows, visual grids, and custom view permissions.' }],
+            ['supabase', 'Supabase', null, { title: 'Hosted relational tables built on standard PostgreSQL.' }],
+            ['planetscale', 'PlanetScale', null, { title: 'Serverless, branching MySQL platform designed for horizontally scaled relational data.' }],
+            ['neon', 'Neon', null, { title: 'Serverless PostgreSQL with instant provisioning and autoscaling.' }],
+            ['retool', 'Retool', null, { title: 'Application platform with an integrated tabular Retool Database.' }]
+        ]],
+        ['Large Enterprise Tech Platforms', [
+            ['aws', 'Amazon RDS', null, { title: 'AWS managed relational databases for PostgreSQL, MySQL, Oracle, and other engines.' }],
+            ['azure', 'Azure SQL', null, { title: 'Microsoft enterprise relational database service with hybrid-cloud support.' }],
+            ['gcp', 'Google Cloud SQL', null, { title: 'Google managed relational databases alongside large-scale tabular services.' }]
+        ]]
+    ],
+    export: [
+        ['Export', [
+            ['excel', 'Excel'], ['text', 'Text File'], ['email', 'Email'], ['sqlite', 'SQLite']
+        ]],
+        ['Export Connectors', [
+            ['php', 'PHP Connector'], ['nodejs', 'Node.js Connector'], ['mysql', 'Direct MySQL']
+        ]],
+        ['Mid-Market & Scale-Up Platforms', [
+            ['airtable', 'Airtable', null, { title: 'Export tabular data to Airtable relational workflows and visual grids.' }],
+            ['supabase', 'Supabase', null, { title: 'Export relational data to hosted PostgreSQL tables in Supabase.' }],
+            ['planetscale', 'PlanetScale', null, { title: 'Export relational data to PlanetScale serverless MySQL.' }],
+            ['neon', 'Neon', null, { title: 'Export relational data to Neon serverless PostgreSQL.' }],
+            ['retool', 'Retool', null, { title: 'Export tabular data to the integrated Retool Database.' }]
+        ]],
+        ['Large Enterprise Tech Platforms', [
+            ['aws', 'Amazon RDS', null, { title: 'Export relational data to an Amazon RDS database.' }],
+            ['azure', 'Azure SQL', null, { title: 'Export relational data to Microsoft Azure SQL.' }],
+            ['gcp', 'Google Cloud SQL', null, { title: 'Export relational data to Google Cloud SQL.' }]
+        ]]
     ],
     database: [
         ['Tools', [['relationships', 'Relationships'], ['deps', 'Object Dependencies'], ['analyze', 'Analyze Table']]],
         ['Macro', [['code', 'Visual Basic'], ['run', 'Run Macro'], ['secure', 'Macro Security']]]
     ],
     fields: [
-        ['Views', [['grid', 'View', '@datasheet'], ['design', 'Design View', '@design']]],
         ['Add & Delete', [['text-field', 'Short Text'], ['number', 'Number'], ['currency', 'Currency'], ['date', 'Date & Time'], ['yes-no', 'Yes/No'], ['more-fields', 'More Fields'], ['delete', 'Delete']]],
         ['Properties', [['caption', 'Name & Caption'], ['default', 'Default Value'], ['field-size', 'Field Size'], ['lookup', 'Modify Lookups'], ['expression', 'Modify Expression'], ['memo', 'Memo Settings']]],
         ['Formatting', [['data-type', 'Data Type: AutoNumber'], ['format', 'Format: Formatting'], ['currency-symbol', '$'], ['percent', '%'], ['comma', ','], ['decimal-less', '.00 -> .0'], ['decimal-more', '.0 -> .00']]],
@@ -35,7 +68,6 @@ const ribbons = {
         ['Relationships', [['relationships', 'Relationships'], ['deps', 'Object Dependencies']]]
     ],
     'table-design': [
-        ['Views', [['grid', 'View', '@datasheet']]],
         ['Tools', [['primary-key', 'Primary Key'], ['builder', 'Builder'], ['test-validation', 'Test Validation Rules']]],
         ['Rows', [['insert-row', 'Insert Rows'], ['delete', 'Delete Rows'], ['lookup', 'Modify Lookups']]],
         ['Show/Hide', [['properties', 'Property Sheet'], ['index', 'Indexes']]],

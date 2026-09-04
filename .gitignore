@@ -4,3 +4,4 @@ php-server.out.log
 php_errors.log
 .env
 logs/
+node_modules/
