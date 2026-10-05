@@ -490,6 +490,18 @@ function fetch_table_columns(mysqli $db, string $tableName): array
         array_splice($columns, min(count($columns), $virtualColumn['position']), 0, [$virtualColumn['column']]);
     }
 
+    $order = is_array($metadata['columnOrder'] ?? null) ? $metadata['columnOrder'] : [];
+    if ($order) {
+        $byName = array_column($columns, null, 'name');
+        $ordered = [];
+        foreach ($order as $name) {
+            if (isset($byName[$name])) {
+                $ordered[] = $byName[$name];
+                unset($byName[$name]);
+            }
+        }
+        $columns = array_merge($ordered, array_values($byName));
+    }
     return [$columns, $primaryKey ?? ($columns[0]['name'] ?? '')];
 }
 

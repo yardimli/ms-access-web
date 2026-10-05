@@ -42,7 +42,7 @@ $brandAssetVersion = filemtime(__DIR__ . '/assets/acaciadb-icon.png');
             <div class="flex h-8 items-center bg-access-red text-white">
                 <div class="flex h-full w-[168px] items-center gap-2 px-3">
                     <img class="app-brand-icon" src="assets/acaciadb-icon.png?v=<?= $brandAssetVersion ?>" alt="AcaciaDB">
-                    <button class="quick-btn" title="Save"><i class="fas fa-save"></i></button>
+                    <button class="quick-btn" data-quick-save title="Save" disabled><i class="fas fa-save"></i></button>
                     <button class="quick-btn opacity-50" title="Undo"><i class="fas fa-undo"></i></button>
                     <button class="quick-btn opacity-50" title="Redo"><i class="fas fa-redo"></i></button>
                     <button class="quick-btn" title="Customize"><i class="fas fa-caret-down"></i></button>

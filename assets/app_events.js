@@ -1,4 +1,8 @@
 document.addEventListener('click', async event => {
+    if (event.target.closest('[data-quick-save]')) {
+        await quickSave();
+        return;
+    }
     if (activeCellEditor && !shouldKeepCellEditorOpen(event.target)) {
         closeActiveCellEditor(true);
     }
@@ -312,6 +316,10 @@ document.addEventListener('change', async event => {
     if (formatSelect && isTableDatasheetView(currentView)) {
         await window.acaciadbActiveTableController?.changeColumnFormat?.({ format: formatSelect.value });
     }
+});
+
+['input', 'change', 'click', 'pointerup', 'drop', 'keydown'].forEach(type => {
+    document.addEventListener(type, () => queueMicrotask(updateQuickSaveState));
 });
 
 document.addEventListener('dblclick', event => {

@@ -1,5 +1,77 @@
 const workspaceStateStorageKey = 'acaciadb.workspace.v1';
 
+async function tableLayoutSession(tableName) {
+    const tab = findOpenObjectTab(currentView);
+    if (tab.layout) return tab.layout;
+    const saved = readTablePrefs(tableName);
+    let prefs = {};
+    if (Object.keys(saved).length) {
+        const choice = await showChoiceDialog({
+            title: `Load Saved Layout: ${tableName}`,
+            message: 'Load the saved column order, widths, and sort order?',
+            choices: [
+                { value: 'yes', label: 'Yes', primary: true },
+                { value: 'no', label: 'No' },
+                { value: 'forget', label: 'No and Forget It' }
+            ]
+        });
+        if (choice === 'yes') prefs = saved;
+        if (choice === 'forget') localStorage.removeItem(tablePrefsKey(tableName));
+    }
+    tab.layout = { tableName, prefs, baseline: JSON.stringify(prefs) };
+    return tab.layout;
+}
+
+async function confirmTableLayoutClose(tab) {
+    const layout = tab.layout;
+    if (!layout || JSON.stringify(layout.prefs) === layout.baseline) return true;
+    const choice = await showChoiceDialog({
+        title: `Save Table Layout: ${layout.tableName}`,
+        message: 'Save the column order, widths, and sort order for the next time you open this table?',
+        choices: [
+            { value: 'yes', label: 'Yes', primary: true },
+            { value: 'no', label: 'No' },
+            { value: 'cancel', label: 'Cancel' }
+        ]
+    });
+    if (choice === 'yes') {
+        try { writeTablePrefs(layout.tableName, layout.prefs); }
+        catch (error) {
+            await showMessageDialog({ title: 'Layout Not Saved', message: error.message, confirmText: 'OK' });
+            return false;
+        }
+    }
+    return choice === 'yes' || choice === 'no';
+}
+
+function activeSaveController() {
+    if (isTableDatasheetView(currentView)) return null;
+    return isTableDesignView(currentView) ? window.acaciadbActiveDesignController : window.acaciadbActiveObjectController;
+}
+
+function updateQuickSaveState() {
+    const button = document.querySelector('[data-quick-save]');
+    if (button) button.disabled = Boolean(button.dataset.saving) || !activeSaveController()?.isDirty?.();
+}
+
+async function quickSave() {
+    if (!closeActiveCellEditor(true)) return;
+    const controller = activeSaveController();
+    if (!controller?.isDirty?.()) return;
+    const button = document.querySelector('[data-quick-save]');
+    button.dataset.saving = 'true';
+    updateQuickSaveState();
+    try {
+        if (controller.saveDesign) await controller.saveDesign({ promptForConfirmation: false });
+        else await controller.save();
+    } catch (error) {
+        await showMessageDialog({ title: 'Save Failed', message: error.message, confirmText: 'OK' });
+    } finally {
+        delete button.dataset.saving;
+        updateQuickSaveState();
+    }
+}
+
 function readWorkspaceState() {
     try {
         const state = JSON.parse(localStorage.getItem(workspaceStateStorageKey) || 'null');
@@ -240,7 +312,7 @@ function renderViewTemplate(view) {
 }
 
 async function loadView(view, options = {}) {
-    closeActiveCellEditor(true);
+    if (!closeActiveCellEditor(true)) return;
     const replaceActive = options.replaceActive === true;
     const existingObjectTab = replaceActive ? null : findOpenObjectTab(view);
 
@@ -248,11 +320,27 @@ async function loadView(view, options = {}) {
         view = existingObjectTab.view;
     }
 
+    if (isTableDesignView(currentView) && designViewPairs[currentView] === view) {
+        const controller = window.acaciadbActiveDesignController;
+        if (controller?.isDirty?.() && !await controller.confirmClose({ switchingToDatasheet: true })) return;
+    }
+
     const existingIndex = findTabIndex(view);
+    const outgoing = findOpenObjectTab(currentView);
+    if (outgoing && content.querySelector('.view-shell') && !isTableDatasheetView(currentView)) {
+        outgoing.editors ||= {};
+        outgoing.editors[currentView] = {
+            nodes: [...content.childNodes],
+            design: window.acaciadbActiveDesignController,
+            object: window.acaciadbActiveObjectController
+        };
+    }
+    if (replaceActive && view === currentView && outgoing?.editors) delete outgoing.editors[view];
 
     if (replaceActive && openTabs.length) {
         const activeIndex = Math.max(0, findTabIndex(currentView));
         openTabs[activeIndex] = {
+            ...openTabs[activeIndex],
             view,
             title: viewTitles[view] || 'Object'
         };
@@ -264,10 +352,26 @@ async function loadView(view, options = {}) {
     }
 
     currentView = view;
+    window.acaciadbActiveDesignController = null;
+    window.acaciadbActiveTableController = null;
+    window.acaciadbActiveObjectController = null;
+    updateQuickSaveState();
     statusModeOverride = null;
     persistWorkspaceState();
     content.innerHTML = '<div class="p-6 text-neutral-500">Loading...</div>';
     renderDocumentTabs();
+    const cached = findOpenObjectTab(view)?.editors?.[view];
+    if (cached) {
+        content.replaceChildren(...cached.nodes);
+        window.acaciadbActiveDesignController = cached.design;
+        window.acaciadbActiveObjectController = cached.object;
+        setActiveObject(view);
+        updateContextualRibbon(view);
+        renderStatusViewButtons();
+        status.textContent = content.querySelector('.view-shell')?.dataset.status || 'Ready';
+        updateQuickSaveState();
+        return;
+    }
     const response = await fetch(`api/view.php?view=${encodeURIComponent(view)}`, {
         headers: { 'X-Requested-With': 'XMLHttpRequest' }
     });
@@ -300,26 +404,53 @@ async function loadView(view, options = {}) {
     updateContextualRibbon(view);
     renderStatusViewButtons();
     await initCurrentView();
+    updateQuickSaveState();
 }
 
 async function closeActiveTab() {
+    if (!closeActiveCellEditor(true)) return;
     const activeIndex = findTabIndex(currentView);
     if (activeIndex === -1) {
         return;
     }
 
-    if (isTableDesignView(currentView)) {
-        const controller = window.acaciadbActiveDesignController;
+    const tab = openTabs[activeIndex];
+    const designView = tableViewPairs[currentView] || currentView;
+    {
+        const controller = isTableDesignView(currentView) ? window.acaciadbActiveDesignController : tab.editors?.[designView]?.design;
         if (controller?.isDirty?.()) {
             const canClose = await controller.confirmClose?.();
             if (!canClose) return;
         }
     }
 
+    if (!await confirmTableLayoutClose(tab)) return;
+
+    const objectControllers = new Set([window.acaciadbActiveObjectController,
+        ...Object.values(tab.editors || {}).map(editor => editor.object)]);
+    for (const controller of objectControllers) {
+        if (!controller?.isDirty?.()) continue;
+        const choice = await showChoiceDialog({
+            title: 'Unsaved Changes', message: 'Save changes before closing?',
+            choices: [{ value: 'save', label: 'Save Changes', primary: true },
+                { value: 'discard', label: 'Discard Changes' }, { value: 'cancel', label: 'Cancel' }]
+        });
+        if (choice === 'save') {
+            try { await controller.save(); }
+            catch (error) {
+                await showMessageDialog({ title: 'Save Failed', message: error.message, confirmText: 'OK' });
+                return;
+            }
+        } else if (choice !== 'discard') return;
+    }
+
     openTabs.splice(activeIndex, 1);
 
     if (!openTabs.length) {
         currentView = '';
+        window.acaciadbActiveDesignController = null;
+        window.acaciadbActiveObjectController = null;
+        updateQuickSaveState();
         persistWorkspaceState();
         content.innerHTML = '<div class="p-6 text-neutral-500">Double-click an object to open it.</div>';
         status.textContent = 'Ready';
@@ -343,20 +474,12 @@ async function switchTableMode(mode) {
         return;
     }
 
-    if (isTableDesignView(currentView) && mode === 'datasheet') {
-        const controller = window.acaciadbActiveDesignController;
-        if (controller?.isDirty?.()) {
-            const saved = await controller.saveDesign();
-            if (!saved) return;
-        }
-    }
-
     await loadView(target, { replaceActive: true });
 }
 
 async function initCurrentView() {
     const db = await getDatabase();
-    initTableViews(db);
+    await initTableViews(db);
     initDesignViews(db);
     initFormViews(db);
     initFormDesignViews(db);

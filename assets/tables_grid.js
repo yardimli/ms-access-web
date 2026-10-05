@@ -605,7 +605,7 @@ function resetRowsToOriginalOrder(rows) {
 }
 
 function tablePrefsKey(tableName) {
-    return `acaciadbWeb.table.${tableName}.viewPrefs`;
+    return `acaciadbWeb.database.${encodeURIComponent(currentDatabaseName)}.table.${tableName}.viewPrefs`;
 }
 
 function readTablePrefs(tableName) {

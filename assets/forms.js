@@ -113,6 +113,8 @@ function renderFormFormatRibbon() {
 
 
 function initFormViews(db) {
+    // Record edits remain local to this open form until explicitly saved.
+    db = structuredClone(db);
     content.querySelectorAll('[data-form-view]').forEach(view => {
         if (view.dataset.ready === 'true') {
             return;
@@ -121,6 +123,33 @@ function initFormViews(db) {
         view.dataset.ready = 'true';
         const form = db.forms[view.dataset.formId];
         let index = 0;
+        const recordTables = [...new Set([form?.parentTable, form?.subform?.table])]
+            .map(name => [name, db.tables[name]]).filter(([, table]) => table?.data);
+        const originals = new Map(recordTables.flatMap(([, table]) => table.data.map(row => [row, structuredClone(row)])));
+        window.acaciadbActiveObjectController = {
+            isDirty: () => [...originals].some(([row, original]) => JSON.stringify(row) !== JSON.stringify(original))
+                || Boolean(activeCellEditor && originals.has(activeCellEditor.row)
+                    && String(editorValue(activeCellEditor)) !== String(activeCellEditor.originalValue ?? '')),
+            async save() {
+                if (!closeActiveCellEditor(true)) throw new Error('Correct the invalid field before saving.');
+                for (const [name, table] of recordTables) {
+                    for (const row of table.data) {
+                        const original = originals.get(row);
+                        if (JSON.stringify(row) === JSON.stringify(original)) continue;
+                        const response = await postRecordAction({ action: 'update', table: name,
+                            primaryKeyValue: original[table.structure.primaryKey], row: { ...row } });
+                        if (response.row) Object.assign(row, response.row);
+                        originals.set(row, structuredClone(row));
+                    }
+                }
+                databasePromise = null;
+                status.textContent = 'Form records saved';
+            }
+        };
+        view.addEventListener('input', event => {
+            const field = event.target.dataset.formField;
+            if (field) db.tables[form.parentTable].data[index][field] = event.target.value;
+        });
 
         function renderForm() {
             if (!form) {
@@ -159,7 +188,7 @@ function initFormViews(db) {
                         <div class="form-fields">
                             ${parentColumns.map(column => `
                                 <label class="form-label">${escapeHtml(column.label || column.name)}</label>
-                                <input class="form-input" data-form-field="${escapeHtml(column.name)}" value="${escapeHtml(formatValue(parent[column.name], column.type))}">
+                                <input class="form-input" data-form-field="${escapeHtml(column.name)}" ${column.primaryKey ? 'disabled' : ''} value="${escapeHtml(formatValue(parent[column.name], column.type))}">
                             `).join('')}
                         </div>
                         <div class="form-summary">
@@ -195,7 +224,11 @@ function initFormViews(db) {
             `;
 
             const subformHost = view.querySelector('[data-subform-host]');
-            enableEditableCells(subformHost, subRows);
+            enableEditableCells(subformHost, subRows, {
+                columns: subTable.structure.columns,
+                onRowEdit: (rowIndex, column, value) => { subRows[rowIndex][column] = value; },
+                onClose: updateQuickSaveState
+            });
             enableSubformSorting(subformHost, subTable, subRows, subform.columns);
         }
 

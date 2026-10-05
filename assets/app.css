@@ -1937,3 +1937,6 @@ select,
     padding: 22px 8px;
 }
 
+.quick-btn:disabled { opacity: .35; cursor: default; }
+.design-grid [draggable="true"] { cursor: grab; }
+.design-grid tr.drag-over { outline: 2px solid #3874ad; }

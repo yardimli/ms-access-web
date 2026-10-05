@@ -786,6 +786,12 @@ try {
             }
         }
 
+        if (isset($request['columnOrder'])) {
+            if (!is_array($request['columnOrder'])) throw new RuntimeException('Invalid field order.');
+            $metadata['columnOrder'] = array_values(array_unique(array_map(
+                fn ($name) => validate_field_name((string) $name), $request['columnOrder']
+            )));
+        }
         $metadata['tableProperties'] = is_array($request['tableProperties'] ?? null) ? $request['tableProperties'] : [];
         save_table_metadata($db, $resolvedTable, $metadata);
         json_response([

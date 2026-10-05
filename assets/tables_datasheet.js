@@ -1,7 +1,7 @@
-function initTableViews(db) {
-    content.querySelectorAll('[data-table-view]').forEach(view => {
+async function initTableViews(db) {
+    for (const view of content.querySelectorAll('[data-table-view]')) {
         if (view.dataset.ready === 'true') {
-            return;
+            continue;
         }
 
         view.dataset.ready = 'true';
@@ -26,8 +26,13 @@ function initTableViews(db) {
             hasNext: Boolean(tableDef?.pagination?.hasNext)
         };
         let pageLoading = false;
-        const sortState = { column: null, direction: 'none' };
-        let prefs = readTablePrefs(tableName);
+        const session = await tableLayoutSession(tableName);
+        let prefs = session.prefs;
+        const sortState = { column: null, direction: 'none', ...prefs.sortState };
+        if (!tableDef.structure.columns.some(column => column.name === sortState.column)) {
+            sortState.column = null;
+            sortState.direction = 'none';
+        }
         let displayColumns = orderedTableColumns(tableDef, prefs);
         let insertDraft = {};
         let activeColumnName = tableDef.structure.columns[0]?.name || '';
@@ -72,7 +77,7 @@ function initTableViews(db) {
 
         function savePrefs(nextPrefs = prefs) {
             prefs = nextPrefs;
-            writeTablePrefs(tableName, prefs);
+            session.prefs = prefs;
         }
 
         function syncPagination(next = {}) {
@@ -1474,6 +1479,7 @@ function initTableViews(db) {
                 if (sortState.direction === 'none') {
                     sortState.column = null;
                 }
+                savePrefs({ ...prefs, sortState: { ...sortState } });
                 cursorRowIndex = 0;
                 renderTable();
                 updateCellCursor();
@@ -1754,6 +1760,6 @@ function initTableViews(db) {
             }
             await loadTablePage(pageSkipInput?.value, pageLimitInput?.value);
         });
-    });
+    }
 }
 

@@ -80,7 +80,7 @@ function initDesignViews(db) {
             ...cloneDesignValue(column), type: designBaseType(column), originalName: column.name,
             originalIndex: index, isNew: false, deleted: false
         }));
-        const originalColumns = cloneDesignValue(columns);
+        let originalColumns = cloneDesignValue(columns);
         const tableProperties = {
             readOnlyWhenDisconnected: 'No', subdatasheetExpanded: 'No', subdatasheetHeight: '0"',
             orientation: 'Left-to-Right', description: '', defaultView: 'Datasheet', validationRule: '',
@@ -88,7 +88,7 @@ function initDesignViews(db) {
             linkMasterFields: '', filterOnLoad: 'No', orderByOnLoad: 'Yes',
             ...(cloneDesignValue(tableDef?.structure?.tableProperties) || {})
         };
-        const originalTableProperties = cloneDesignValue(tableProperties);
+        let originalTableProperties = cloneDesignValue(tableProperties);
         let selectedIndex = 0;
         let activeFieldTab = 'general';
         let fieldPropertiesHeight = 330;
@@ -215,6 +215,7 @@ function initDesignViews(db) {
         }
 
         function renderFieldProperties() {
+            queueMicrotask(updateQuickSaveState);
             const column = selectedColumn();
             const host = view.querySelector('[data-field-property-grid]');
             if (!host || !column) return;
@@ -249,6 +250,7 @@ function initDesignViews(db) {
         }
 
         function updateDesignRibbonState() {
+            queueMicrotask(updateQuickSaveState);
             const column = selectedColumn();
             const lookupButton = ribbon.querySelector('.table-design-ribbon [data-command="lookup"]');
             const deleteButton = ribbon.querySelector('.table-design-ribbon [data-command="delete"]');
@@ -290,7 +292,7 @@ function initDesignViews(db) {
             body.innerHTML = visibleColumns().map(column => {
                 const index = columns.indexOf(column);
                 return `<tr class="${index === selectedIndex ? 'editing' : ''}" data-design-row="${index}">
-                    <td class="row-head" data-design-row-head="${index}">${column.primaryKey ? '<i class="fas fa-key"></i>' : index === selectedIndex ? '<i class="fas fa-caret-right"></i>' : ''}</td>
+                    <td class="row-head" draggable="${!column.primaryKey}" title="${column.primaryKey ? 'Primary key position is fixed' : 'Drag to reorder field'}" data-design-row-head="${index}">${column.primaryKey ? '<i class="fas fa-key"></i>' : index === selectedIndex ? '<i class="fas fa-caret-right"></i>' : ''}</td>
                     <td><input class="design-cell-input" data-design-name value="${escapeHtml(column.name)}" ${column.primaryKey ? 'disabled' : ''}></td>
                     <td class="design-type-cell"><select data-design-type ${column.primaryKey || column.lookup || column.calculatedJavascript ? 'disabled' : ''}>${designFieldTypes.map(type => `<option ${type === column.type ? 'selected' : ''}>${escapeHtml(type)}</option>`).join('')}</select></td>
                     <td><input class="design-cell-input" data-design-comment value="${escapeHtml(column.comment || '')}"></td>
@@ -498,11 +500,12 @@ function initDesignViews(db) {
             }));
         }
 
-        const isDirty = () => designChanges().length > 0 || JSON.stringify(tableProperties) !== JSON.stringify(originalTableProperties);
+        const orderChanged = () => JSON.stringify(visibleColumns().map(column => column.originalName)) !== JSON.stringify(originalColumns.map(column => column.originalName));
+        const isDirty = () => orderChanged() || designChanges().length > 0 || JSON.stringify(tableProperties) !== JSON.stringify(originalTableProperties);
 
         async function saveDesign({ promptForConfirmation = true } = {}) {
             const changes = designChanges();
-            if (!changes.length && JSON.stringify(tableProperties) === JSON.stringify(originalTableProperties)) return true;
+            if (!isDirty()) return true;
             const invalid = visibleColumns().find(column => !/^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(column.name));
             if (invalid) {
                 await showMessageDialog({ title: 'Invalid Field Name', message: `${invalid.name} is not a valid SQL field name.`, confirmText: 'OK' });
@@ -523,6 +526,7 @@ function initDesignViews(db) {
                 return parts.length ? `${change.originalName}: ${parts.join(', ')}` : `Update properties for ${change.name}`;
             });
             const nextPrimaryKey = visibleColumns().find(column => column.primaryKey)?.name || '';
+            if (orderChanged()) descriptions.push('Reorder fields');
             if (nextPrimaryKey && nextPrimaryKey !== tableDef.structure.primaryKey) {
                 descriptions.unshift(`Move the primary key from ${tableDef.structure.primaryKey || '(none)'} to ${nextPrimaryKey}`);
             }
@@ -534,14 +538,25 @@ function initDesignViews(db) {
             }
             try {
                 status.textContent = 'Saving table design...';
-                await postSchemaAction({
+                const response = await postSchemaAction({
                     action: 'applyDesignChanges',
                     table: tableName,
                     columns: changes,
+                    columnOrder: visibleColumns().map(column => column.name),
                     primaryKey: visibleColumns().find(column => column.primaryKey)?.name || '',
                     originalPrimaryKey: tableDef.structure.primaryKey || '',
                     tableProperties
                 });
+                tableDef.structure = response.payload.structure;
+                columns.splice(0, columns.length, ...tableDef.structure.columns.map((column, index) => ({
+                    ...cloneDesignValue(column), type: designBaseType(column), originalName: column.name,
+                    originalIndex: index, isNew: false, deleted: false
+                })));
+                originalColumns = cloneDesignValue(columns);
+                originalTableProperties = cloneDesignValue(tableProperties);
+                renderRows();
+                renderFieldProperties();
+                updateQuickSaveState();
                 databasePromise = null;
                 status.textContent = 'Table design saved';
                 return true;
@@ -552,18 +567,30 @@ function initDesignViews(db) {
             }
         }
 
-        async function confirmClose() {
+        async function confirmClose({ switchingToDatasheet = false } = {}) {
             if (!isDirty()) return true;
             const decision = await showChoiceDialog({
                 title: `Unsaved Table Design: ${tableName}`,
-                message: `The design for ${tableName} has unsaved changes. Apply the changes before closing?`,
+                message: switchingToDatasheet
+                    ? `Save/apply or discard the design changes for ${tableName} before switching to Datasheet View.`
+                    : `The design for ${tableName} has unsaved changes. Apply the changes before closing?`,
                 choices: [
                     { value: 'cancel', label: 'Cancel' },
-                    { value: 'abandon', label: 'Abandon Changes' },
+                    { value: 'abandon', label: 'Discard Changes' },
                     { value: 'apply', label: 'Apply Changes', primary: true }
                 ]
             });
-            if (decision === 'abandon') return true;
+            if (decision === 'abandon') {
+                columns.splice(0, columns.length, ...cloneDesignValue(originalColumns));
+                Object.keys(tableProperties).forEach(key => delete tableProperties[key]);
+                Object.assign(tableProperties, cloneDesignValue(originalTableProperties));
+                selectedIndex = Math.min(selectedIndex, Math.max(0, columns.length - 1));
+                renderRows();
+                renderFieldProperties();
+                renderPropertySheet();
+                updateDesignRibbonState();
+                return true;
+            }
             if (decision !== 'apply') return false;
             return saveDesign({ promptForConfirmation: false });
         }
@@ -667,6 +694,45 @@ function initDesignViews(db) {
             selectDesignRow(index);
             showRowMenu(event, index);
         });
+
+        let draggedColumn = null;
+        view.addEventListener('dragstart', event => {
+            const head = event.target.closest('[data-design-row-head]');
+            const column = head && columns[Number(head.dataset.designRowHead)];
+            if (!column || column.primaryKey) { event.preventDefault(); return; }
+            draggedColumn = column;
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/plain', column.name);
+        });
+        const clearDragHighlight = () => view.querySelectorAll('.drag-over').forEach(row => row.classList.remove('drag-over'));
+        view.addEventListener('dragover', event => {
+            clearDragHighlight();
+            const row = event.target.closest('[data-design-row]');
+            if (!draggedColumn || !row || columns[Number(row.dataset.designRow)].primaryKey) return;
+            event.preventDefault();
+            row.classList.add('drag-over');
+        });
+        view.addEventListener('drop', event => {
+            clearDragHighlight();
+            const row = event.target.closest('[data-design-row]');
+            const target = row && columns[Number(row.dataset.designRow)];
+            if (!draggedColumn || !target || target.primaryKey) return;
+            event.preventDefault();
+            // Reorder only movable slots so primary-key rows retain their position.
+            const movable = columns.filter(column => !column.primaryKey && !column.deleted);
+            const from = movable.indexOf(draggedColumn);
+            const to = movable.indexOf(target);
+            movable.splice(to, 0, movable.splice(from, 1)[0]);
+            let slot = 0;
+            columns.forEach((column, index) => {
+                if (!column.primaryKey && !column.deleted) columns[index] = movable[slot++];
+            });
+            selectedIndex = columns.indexOf(draggedColumn);
+            draggedColumn = null;
+            renderRows();
+            selectDesignRow(selectedIndex);
+        });
+        view.addEventListener('dragend', () => { draggedColumn = null; clearDragHighlight(); });
 
         document.addEventListener('click', event => {
             if (!event.target.closest('.design-row-menu')) document.querySelector('.design-row-menu')?.remove();

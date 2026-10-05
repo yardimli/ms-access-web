@@ -16,6 +16,7 @@
             return;
         }
 
+        const positions = { ...(query.positions || {}) };
         const tables = new Set((query.tables || [])
             .map(table => resolveTableName(db, table))
             .filter(table => db.tables[table]));
@@ -49,8 +50,8 @@
                 const node = document.createElement('section');
                 node.className = 'query-node table-node';
                 node.dataset.node = tableName;
-                node.style.left = `${34 + ((index % 3) * 280)}px`;
-                node.style.top = `${26 + (Math.floor(index / 3) * 210)}px`;
+                node.style.left = `${positions[tableName]?.x ?? 34 + ((index % 3) * 280)}px`;
+                node.style.top = `${positions[tableName]?.y ?? 26 + (Math.floor(index / 3) * 210)}px`;
                 node.innerHTML = `
                     <header><span>${escapeHtml(tableName)}</span><small>Table</small></header>
                     ${table.structure.columns.map(column => `
@@ -79,7 +80,7 @@
                         <tr><th>Field:</th>${fields.map(field => `<td>${escapeHtml(field.field)}</td>`).join('')}</tr>
                         <tr><th>Table:</th>${fields.map(field => `<td>${escapeHtml(field.table)}</td>`).join('')}</tr>
                         <tr><th>Sort:</th>${fields.map(field => `<td>${escapeHtml(field.sort || '')}</td>`).join('')}</tr>
-                        <tr><th>Show:</th>${fields.map(field => `<td><input type="checkbox" ${field.show !== false ? 'checked' : ''}></td>`).join('')}</tr>
+                        <tr><th>Show:</th>${fields.map((field, index) => `<td><input type="checkbox" data-query-show="${index}" ${field.show !== false ? 'checked' : ''}></td>`).join('')}</tr>
                         <tr><th>Criteria:</th>${fields.map(field => `<td>${escapeHtml(field.criteria || '')}</td>`).join('')}</tr>
                         <tr><th>or:</th>${fields.map(() => '<td></td>').join('')}</tr>
                     </tbody>
@@ -178,6 +179,9 @@
                 if (!drag) return;
                 handle.releasePointerCapture(event.pointerId);
                 node.classList.remove('dragging');
+                if (node.offsetLeft !== drag.nodeX || node.offsetTop !== drag.nodeY) {
+                    positions[node.dataset.node] = { x: node.offsetLeft, y: node.offsetTop };
+                }
                 drag = null;
                 drawWires();
             });
@@ -189,7 +193,7 @@
             selectedFields = selectedFields.filter(item => !(item.table === table && item.field === field));
 
             if (checked) {
-                const existing = query.fields.find(item => item.table === table && item.field === field);
+                const existing = (query.fields || []).find(item => item.table === table && item.field === field);
                 selectedFields.push(existing ? { ...existing, show: true } : {
                     table,
                     field,
@@ -297,6 +301,28 @@
             renderNodes();
         });
 
+        gridHost.addEventListener('change', event => {
+            const input = event.target.closest('[data-query-show]');
+            const field = input && selectedFields[Number(input.dataset.queryShow)];
+            if (field) field.show = input.checked;
+        });
+        const definition = () => ({ tables: [...tables], fields: selectedFields, connections, positions });
+        let baseline = JSON.stringify(definition());
+        window.acaciadbActiveObjectController = {
+            isDirty: () => JSON.stringify(definition()) !== baseline,
+            async save() {
+                const snapshot = JSON.stringify(definition());
+                const response = await fetch('api/objects.php', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: builder.dataset.queryId, definition: JSON.parse(snapshot) })
+                });
+                const result = await response.json();
+                if (!response.ok || !result.ok) throw new Error(result.error || 'Query could not be saved.');
+                baseline = snapshot;
+                databasePromise = null;
+                status.textContent = 'Query saved';
+            }
+        };
         renderNodes();
         renderDesignGrid();
     });
