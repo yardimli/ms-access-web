@@ -1713,6 +1713,16 @@ select,
 .database-list-entry .database-list-row { flex: 1; min-width: 0; }
 .database-details-button { border: 0; border-bottom: 1px solid #ddd; background: transparent; padding: 0 12px; color: #2563a6; cursor: pointer; }
 .database-details-button:hover { background: #e9eef5; }
+.database-chat-dialog { width: min(860px, 94vw); max-height: 90vh; padding: 0; }
+.database-chat-help, .database-chat-form, .database-chat-dialog [data-chat-status] { padding: 10px 18px; }
+.database-chat-help { font-size: 13px; }
+.database-chat-messages { height: 42vh; overflow: auto; padding: 12px 18px; }
+.database-chat-message { padding: 12px; margin-bottom: 10px; border: 1px solid #8885; border-radius: 6px; }
+.database-chat-message.user { background: #8881; }
+.database-chat-message div { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 6px; }
+.database-chat-form textarea { display: block; width: 100%; padding: 10px; color: inherit; background: transparent; border: 1px solid #888; }
+.database-chat-dialog [data-chat-status] { margin: 0; }
+.form-navigation-only > .subform-title, .form-navigation-only > .subform-scroll { display: none; }
 
 .database-list-row:hover,
 .database-list-row.active {

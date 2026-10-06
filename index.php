@@ -81,10 +81,10 @@ $brandAssetVersion = filemtime(__DIR__ . '/assets/acaciadb-icon.png');
                 <nav class="flex h-full items-end" id="help-ribbon-tab">
                     <button class="ribbon-tab px-5" data-ribbon="help">Help</button>
                 </nav>
-                <div class="mb-3 ml-3 flex min-w-[260px] items-center gap-2 text-white/95">
+                <button type="button" data-database-chat class="mb-3 ml-3 flex min-w-[260px] items-center gap-2 text-white/95" aria-label="Tell me what you want to do">
                     <span class="text-lg leading-none">?</span>
                     <span>Tell me what you want to do</span>
-                </div>
+                </button>
                 <div class="ml-auto mb-3 mr-5 text-lg">:)</div>
             </div>
 
@@ -137,8 +137,8 @@ $brandAssetVersion = filemtime(__DIR__ . '/assets/acaciadb-icon.png');
     <script src="assets/tables_datasheet.js?v=<?= $tableAssetVersion ?>"></script>
     <script src="assets/tables_design.js?v=<?= $tableAssetVersion ?>"></script>
     <script src="assets/tables_design_editor.js?v=<?= $tableAssetVersion ?>"></script>
-    <script src="assets/forms.js"></script>
-    <script src="assets/queries.js"></script>
+    <script src="assets/forms.js?v=<?= filemtime(__DIR__ . '/assets/forms.js') ?>"></script>
+    <script src="assets/queries.js?v=<?= filemtime(__DIR__ . '/assets/queries.js') ?>"></script>
     <script src="assets/reports.js"></script>
     <script src="assets/app_storage.js?v=<?= $appAssetVersion ?>"></script>
     <script src="assets/app_config.js?v=<?= $appAssetVersion ?>"></script>
@@ -147,6 +147,7 @@ $brandAssetVersion = filemtime(__DIR__ . '/assets/acaciadb-icon.png');
     <script src="assets/app_object_pane.js?v=<?= $appAssetVersion ?>"></script>
     <script src="assets/app_ribbon.js?v=<?= $appAssetVersion ?>"></script>
     <script src="assets/app_views.js?v=<?= $appAssetVersion ?>"></script>
+    <script src="assets/app_chat.js?v=<?= $appAssetVersion ?>"></script>
     <script src="assets/app_events.js?v=<?= $appAssetVersion ?>"></script>
     <script src="assets/theme.js?v=<?= $themeAssetVersion ?>"></script>
 </body>

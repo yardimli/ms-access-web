@@ -17,7 +17,7 @@
         }
 
         if (query.sourceSql !== undefined) {
-            builder.innerHTML = `<div class="imported-query-editor"><h2>${escapeHtml(builder.dataset.queryId)}</h2><p>Imported Access SQL definition. You can edit and save the definition here. Access-specific SQL needs translation before it can run on SQLite.</p><textarea aria-label="Imported query SQL" spellcheck="false">${escapeHtml(query.sourceSql)}</textarea></div>`;
+            builder.innerHTML = `<div class="imported-query-editor"><h2>${escapeHtml(builder.dataset.queryId)}</h2><p>${query.sourceDialect === 'sqlite' ? 'Saved SQLite SQL definition. Edit and save the query here.' : 'Imported Access SQL definition. Access-specific SQL needs translation before it can run on SQLite.'}</p><textarea aria-label="Query SQL" spellcheck="false">${escapeHtml(query.sourceSql)}</textarea></div>`;
             const editor = builder.querySelector('textarea');
             let baseline = editor.value;
             window.acaciadbActiveObjectController = {

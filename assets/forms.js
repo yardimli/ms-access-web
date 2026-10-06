@@ -165,8 +165,8 @@ function initFormViews(db) {
 
             const parentRows = parentTable.data;
             const parent = parentRows[index];
-            const subform = form.subform;
-            const subTable = db.tables[subform.table];
+            const subform = form.subform || { table: '', title: '', columns: [] };
+            const subTable = form.subform ? db.tables[subform.table] : { data: [], structure: { columns: [] } };
             if (!subTable) {
                 view.innerHTML = `<div class="p-6 text-red-700">Subform table ${escapeHtml(subform.table)} was not found.</div>`;
                 return;
@@ -200,7 +200,7 @@ function initFormViews(db) {
                             </div>
                         </div>
                     </div>
-                    <div class="subform-panel">
+                    <div class="subform-panel ${form.subform ? '' : 'form-navigation-only'}">
                         <div class="subform-title">${escapeHtml(subform.title)}</div>
                         <div class="subform-scroll" data-subform-host>
                             ${buildTableMarkup(subTable, subRows, { className: 'subform-grid', columns: subform.columns, emptyRows: 12 })}
@@ -270,13 +270,13 @@ function initFormDesignViews(db) {
         }
 
         const parentColumns = parentTable.structure.columns.filter(column => form.fields.includes(column.name));
-        const subTable = db.tables[form.subform.table];
+        const subTable = form.subform ? db.tables[form.subform.table] : { structure: { columns: [] } };
         if (!subTable) {
             view.innerHTML = `<div class="p-6 text-red-700">Subform table ${escapeHtml(form.subform.table)} was not found.</div>`;
             return;
         }
 
-        const subColumns = subTable.structure.columns.filter(column => form.subform.columns.includes(column.name));
+        const subColumns = subTable.structure.columns.filter(column => form.subform?.columns.includes(column.name));
 
         const firstColumn = parentColumns[0];
         view.innerHTML = `
@@ -304,8 +304,8 @@ function initFormDesignViews(db) {
                                         <label class="designer-label" style="top:${34 + index * 64}px">${escapeHtml(column.label || column.name)}</label>
                                         <div class="designer-input ${index === 0 ? 'selected-control' : ''}" style="top:${28 + index * 64}px">${escapeHtml(column.name)}</div>
                                     `).join('')}
-                                    <div class="designer-subform">
-                                        <div class="designer-subform-title">${escapeHtml(form.subform.title)}</div>
+                                    <div class="designer-subform" ${form.subform ? '' : 'hidden'}>
+                                        <div class="designer-subform-title">${escapeHtml(form.subform?.title)}</div>
                                         <div class="designer-subform-grid">
                                             ${subColumns.slice(0, 5).map(column => `<span>${escapeHtml(column.label || column.name)}</span>`).join('')}
                                         </div>

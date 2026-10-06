@@ -24,6 +24,18 @@ Saved Access queries are retained as editable SQL definitions. Access SQL is not
 
 SQLite supports the application's ordinary record and design operations. Existing-record updates and deletes require a single-column primary key; tables without one or with composite keys remain available to inspect and download. The database itself retains those keys and data.
 
-## Verification
+## Database assistant
+
+The header's **Tell me what you want to do** button opens chat for the current SQLite database. MySQL/MariaDB databases show an unsupported-database message. Configure `OPENROUTER_API_KEY` and `OPENROUTER_CHAT_MODEL` in `.env`; the model falls back to `OPENROUTER_MODEL` when the chat-specific setting is absent.
+
+Each request sends the conversation and table schemas, relationships, indexes, and saved form/query/report structures to OpenRouter. Table rows and cached report data are excluded. Conversation history stays in localStorage, separately for each browser workspace and database, until **Reset Chat** is clicked. Resetting chat does not undo database changes.
+
+The API uses OpenRouter's [JSON response format](https://openrouter.ai/docs/guides/features/structured-outputs) and independently validates every returned action before execution.
+
+The model returns JSON actions: SQLite table/index SQL or validated form/query/report definitions. Actions run sequentially in one transaction; invalid actions, stale structure, SQL failures or broken foreign keys roll back the batch. Forms support a parent table and optional subform. Reports read up to 500 local rows when opened. Saved SQL queries appear in the SQL definition editor; chat does not execute SELECT queries or return record data to the model. The dialog reports the applied actions and refreshes the object list.
+
+Run `php tests/database-chat.php` for execution and validation checks. Add `--live` to test the configured OpenRouter model against a disposable in-memory database.
+
+## Workspace verification
 
 Run `node --test tests/save-workflow.test.cjs tests/file-workspace.test.cjs` for browser-state and save workflow tests. Run `python tests/database-workspaces.py` for the real PHP API integration checks. Integration checks use disposable browser workspaces, the installed Java importer, and a read-only connection to the configured Northwind MariaDB source. They also fetch a pinned Jackcess MDB query fixture into the ignored `tests/.tmp` directory.

@@ -134,6 +134,11 @@ try {
                 break;
             }
 
+            if (isset($report['sourceTable']) && $db instanceof SQLiteConnection) {
+                $source = resolve_table_name($db, $report['sourceTable']);
+                if (!$source) throw new RuntimeException('Report source table was not found.');
+                $report['rows'] = fetch_table_rows($db, $source, '', 0, 500);
+            }
             $payload = view_payload($view, 'report', 'view', $reportName, $reportName, 'Report View', [
                 'reports' => [$reportName => $report],
             ]);
