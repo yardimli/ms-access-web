@@ -700,6 +700,202 @@ html[data-theme="dark"] .query-grid th {
     background: #30363d !important;
 }
 
+/* Dialogs and popup surfaces must not inherit their light-mode backgrounds. */
+html[data-theme="dark"] .dialog-actions,
+html[data-theme="dark"] .expression-builder-dialog,
+html[data-theme="dark"] .expression-builder-actions,
+html[data-theme="dark"] .lookup-wizard-footer,
+html[data-theme="dark"] .more-fields-footer,
+html[data-theme="dark"] .html-editor-toolbar,
+html[data-theme="dark"] .indexes-properties {
+    background: var(--acacia-surface) !important;
+    border-color: var(--acacia-border) !important;
+    color: var(--acacia-text) !important;
+}
+
+html[data-theme="dark"] .home-submenu,
+html[data-theme="dark"] .validation-menu,
+html[data-theme="dark"] .calculated-field-submenu,
+html[data-theme="dark"] .row-popup-menu,
+html[data-theme="dark"] .design-type-menu,
+html[data-theme="dark"] .combo-open,
+html[data-theme="dark"] .lookup-checkbox-editor,
+html[data-theme="dark"] .history-list,
+html[data-theme="dark"] .design-save-list,
+html[data-theme="dark"] .indexes-grid-wrap,
+html[data-theme="dark"] .lookup-listbox,
+html[data-theme="dark"] .lookup-preview-grid,
+html[data-theme="dark"] .expression-list,
+html[data-theme="dark"] .expression-javascript-editor,
+html[data-theme="dark"] .expression-builder-preview {
+    background: var(--acacia-panel) !important;
+    border-color: var(--acacia-border) !important;
+    color: var(--acacia-text) !important;
+}
+
+html[data-theme="dark"] .expression-builder-title,
+html[data-theme="dark"] .lookup-wizard-title,
+html[data-theme="dark"] .color-menu h3,
+html[data-theme="dark"] .more-fields-group h3,
+html[data-theme="dark"] .lookup-preview-grid th,
+html[data-theme="dark"] .prop-label,
+html[data-theme="dark"] .subform-grid th,
+html[data-theme="dark"] .acaciadb-grid .row-head,
+html[data-theme="dark"] .expression-builder-actions button,
+html[data-theme="dark"] .lookup-transfer-buttons button,
+html[data-theme="dark"] .lookup-sort-rows button,
+html[data-theme="dark"] .design-type-button,
+html[data-theme="dark"] .home-select,
+html[data-theme="dark"] .file-scan-spinner,
+html[data-theme="dark"] .database-file-icon,
+html[data-theme="dark"] .blank-database-tile:hover .blank-database-icon {
+    background: var(--acacia-surface-2) !important;
+    border-color: var(--acacia-border) !important;
+    color: var(--acacia-text) !important;
+}
+
+/* These component selectors otherwise outrank the generic dark input rule. */
+html[data-theme="dark"] .acaciadb-dialog input,
+html[data-theme="dark"] .acaciadb-dialog select,
+html[data-theme="dark"] .acaciadb-dialog textarea,
+html[data-theme="dark"] .expression-builder-main textarea,
+html[data-theme="dark"] .expression-javascript-editor textarea,
+html[data-theme="dark"] .lookup-transfer select,
+html[data-theme="dark"] .lookup-wizard-pane select[data-key-field],
+html[data-theme="dark"] .lookup-sort-rows select,
+html[data-theme="dark"] .lookup-wide-input,
+html[data-theme="dark"] .lookup-column-count input,
+html[data-theme="dark"] .new-database-form input,
+html[data-theme="dark"] .file-import-body > label input,
+html[data-theme="dark"] .design-cell-input:focus,
+html[data-theme="dark"] .design-type-cell select:focus,
+html[data-theme="dark"] .acaciadb-grid td.editing-cell {
+    background: #15181b !important;
+    border-color: var(--acacia-border) !important;
+    color: var(--acacia-text) !important;
+}
+
+html[data-theme="dark"] .ribbon-command:hover:not(:disabled),
+html[data-theme="dark"] .home-icon-button:hover:not(:disabled),
+html[data-theme="dark"] .home-select:hover:not(:disabled),
+html[data-theme="dark"] .home-menu-item:hover:not(:disabled),
+html[data-theme="dark"] .home-menu-parent:hover,
+html[data-theme="dark"] .validation-menu-item:hover:not(:disabled),
+html[data-theme="dark"] .create-command:hover:not(:disabled),
+html[data-theme="dark"] .create-mini:hover:not(:disabled),
+html[data-theme="dark"] .create-menu-item:hover:not(:disabled),
+html[data-theme="dark"] .form-ribbon-command:hover:not(:disabled),
+html[data-theme="dark"] .form-ribbon-mini:hover:not(:disabled),
+html[data-theme="dark"] .mini-icon-row button:hover:not(:disabled),
+html[data-theme="dark"] .status-view-btn:hover:not(:disabled),
+html[data-theme="dark"] .object-toggle:hover,
+html[data-theme="dark"] .more-fields-item:hover,
+html[data-theme="dark"] .column-sort:hover,
+html[data-theme="dark"] .row-popup-menu button:hover:not(:disabled),
+html[data-theme="dark"] .record-bar button:not(:disabled):hover,
+html[data-theme="dark"] .html-editor-toolbar button:hover,
+html[data-theme="dark"] .add-column-item:hover,
+html[data-theme="dark"] .dialog-actions button:hover:not(:disabled),
+html[data-theme="dark"] .design-type-button:hover,
+html[data-theme="dark"] .design-type-menu button:hover,
+html[data-theme="dark"] .property-builder-control button:hover,
+html[data-theme="dark"] .design-row-menu button:hover:not(:disabled),
+html[data-theme="dark"] .input-mask-wizard-footer button:hover:not(:disabled),
+html[data-theme="dark"] .lookup-wizard-footer button:hover:not(:disabled),
+html[data-theme="dark"] .expression-builder-actions button:hover:not(:disabled),
+html[data-theme="dark"] .database-details-button:hover {
+    background: #34485a !important;
+    border-color: #718ba2 !important;
+    color: #f4f7fa !important;
+}
+
+html[data-theme="dark"] .dialog-actions .primary,
+html[data-theme="dark"] .expression-builder-actions button.primary,
+html[data-theme="dark"] .size-menu-list .home-menu-item.active,
+html[data-theme="dark"] .design-type-menu .selected,
+html[data-theme="dark"] .combo-open .selected,
+html[data-theme="dark"] .lookup-listbox button.active,
+html[data-theme="dark"] .expression-choice.active {
+    background: #40576a !important;
+    border-color: #718ba2 !important;
+    color: #f4f7fa !important;
+}
+
+html[data-theme="dark"] .dialog-actions .primary:hover:not(:disabled),
+html[data-theme="dark"] .expression-builder-actions button.primary:hover:not(:disabled) {
+    background: #506b80 !important;
+}
+
+html[data-theme="dark"] .acaciadb-dialog button:disabled,
+html[data-theme="dark"] .lookup-wizard-footer button:disabled,
+html[data-theme="dark"] .input-mask-wizard-footer button:disabled,
+html[data-theme="dark"] .expression-builder-actions button:disabled,
+html[data-theme="dark"] .acaciadb-dialog input:disabled,
+html[data-theme="dark"] .acaciadb-dialog select:disabled,
+html[data-theme="dark"] .acaciadb-dialog textarea:disabled {
+    background: #3a3f45 !important;
+    color: #aeb6bf !important;
+    border-color: var(--acacia-border) !important;
+}
+
+html[data-theme="dark"] .dialog-error,
+html[data-theme="dark"] .file-form-error,
+html[data-theme="dark"] .file-load-error,
+html[data-theme="dark"] .expression-builder-error,
+html[data-theme="dark"] .expression-builder-preview.is-error {
+    background: #45292e !important;
+    border-color: #a85e68 !important;
+    color: #ffb4bc !important;
+}
+
+html[data-theme="dark"] .expression-builder-preview code { color: #9acbfa; }
+html[data-theme="dark"] .expression-builder-preview.is-error code { color: #ffb4bc; }
+html[data-theme="dark"] .design-save-warning {
+    background: #403621;
+    border-color: #92763e;
+    color: #f4d594;
+}
+html[data-theme="dark"] .expression-builder-title button:hover,
+html[data-theme="dark"] .lookup-wizard-title button:hover {
+    background: #71363e !important;
+    color: #fff !important;
+}
+
+html[data-theme="dark"] .table-scan-overlay {
+    background: rgba(25, 28, 32, .92);
+    color: var(--acacia-text);
+}
+html[data-theme="dark"] .lookup-wizard-art {
+    background: linear-gradient(135deg, #695529, #403621);
+    color: #f4d594;
+}
+html[data-theme="dark"] .acaciadb-grid .add-column-head {
+    background: #594b2a !important;
+    color: #ffe2a0 !important;
+}
+html[data-theme="dark"] .acaciadb-grid .add-column-head:hover { background: #70603a !important; }
+html[data-theme="dark"] .acaciadb-grid tbody tr:nth-child(even):not(.editing):not(.selected):not(.active-row):not(:hover) td:not(.row-head):not(.editing-cell) {
+    background-color: var(--acacia-panel) !important;
+}
+html[data-theme="dark"] .subform-grid tr.active-row td { background: var(--acacia-selection) !important; }
+html[data-theme="dark"] .acaciadb-grid .new-cell { background: var(--acacia-text) !important; }
+html[data-theme="dark"] .record-page-divider,
+html[data-theme="dark"] #workspace-main.object-pane-resizable .object-pane-splitter::after { background: var(--acacia-border); }
+html[data-theme="dark"] #workspace-main.object-pane-resizable .object-pane-splitter:hover::after,
+html[data-theme="dark"] #workspace-main.object-pane-resizing .object-pane-splitter::after,
+html[data-theme="dark"] .object-pane-splitter:focus-visible::after { background: #75a3ca; }
+
+html[data-theme="dark"] :is(.field-property-help, .field-properties-empty, .indexes-empty, .indexes-properties-body p, .file-help, .file-empty-state, .database-list-date) {
+    color: var(--acacia-muted);
+}
+html[data-theme="dark"] .database-details-button { color: #9acbfa; border-color: var(--acacia-border); }
+html[data-theme="dark"] .row-popup-menu button:not(:disabled) { color: var(--acacia-text); }
+html[data-theme="dark"] .expression-builder-main a,
+html[data-theme="dark"] .expression-builder-description a,
+html[data-theme="dark"] .expression-choice:not(.active) i,
+html[data-theme="dark"] .row-popup-menu i { color: #9acbfa; }
+html[data-theme="dark"] .expression-choice:hover { outline-color: var(--acacia-border); }
+
 /* Compact web ribbon: retain group dividers, with no more than four rows per stack. */
 .ribbon-group,
 .home-group,

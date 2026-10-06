@@ -23,7 +23,7 @@ $brandAssetVersion = filemtime(__DIR__ . '/assets/acaciadb-icon.png');
     <script>
         (() => {
             const savedTheme = localStorage.getItem('acaciadb-theme');
-            const theme = savedTheme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+            const theme = savedTheme === 'dark' ? 'dark' : 'light';
             document.documentElement.dataset.theme = theme;
         })();
     </script>
