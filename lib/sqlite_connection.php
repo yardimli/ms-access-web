@@ -89,7 +89,8 @@ final class SQLiteConnection
     {
         if ($this->catalogFresh) return;
         foreach (['tables', 'columns', 'statistics'] as $table) $this->pdo->exec('DELETE FROM information_schema.' . $table);
-        $tables = $this->pdo->query("SELECT name, sql, 'main' AS origin FROM main.sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' UNION ALL SELECT name, sql, 'temp' AS origin FROM temp.sqlite_schema WHERE type='table'")->fetchAll();
+        // sqlite_master also works on engines predating the sqlite_schema alias.
+        $tables = $this->pdo->query("SELECT name, sql, 'main' AS origin FROM main.sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' UNION ALL SELECT name, sql, 'temp' AS origin FROM temp.sqlite_master WHERE type='table'")->fetchAll();
         $tableInsert = $this->pdo->prepare('INSERT INTO information_schema.tables VALUES (?,?,?,?,?,?,?)');
         $columnInsert = $this->pdo->prepare('INSERT INTO information_schema.columns VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)');
         $indexInsert = $this->pdo->prepare('INSERT INTO information_schema.statistics VALUES (?,?,?,?,?,?,?)');
@@ -154,7 +155,7 @@ final class SQLiteConnection
     private function rebuild(string $table, array $modifications, ?array $primary): void
     {
         $quoted = self::identifier($table);
-        $stmt = $this->pdo->prepare("SELECT sql, 'main' AS origin FROM main.sqlite_schema WHERE type='table' AND name=? UNION ALL SELECT sql, 'temp' AS origin FROM temp.sqlite_schema WHERE type='table' AND name=?");
+        $stmt = $this->pdo->prepare("SELECT sql, 'main' AS origin FROM main.sqlite_master WHERE type='table' AND name=? UNION ALL SELECT sql, 'temp' AS origin FROM temp.sqlite_master WHERE type='table' AND name=?");
         $stmt->execute([$table, $table]); $original = $stmt->fetch(); $stmt->closeCursor();
         if (!$original) throw new RuntimeException('Table not found.');
         $origin = $original['origin'];
@@ -189,7 +190,7 @@ final class SQLiteConnection
         }
         unset($definition);
         if ($primary) $definitions[] = 'PRIMARY KEY (' . implode(', ', array_map([self::class, 'identifier'], $primary)) . ')';
-        $objects = $this->pdo->query("SELECT sql FROM $origin.sqlite_schema WHERE tbl_name=" . $this->pdo->quote($table) . " AND type IN ('index','trigger') AND sql IS NOT NULL")->fetchAll();
+        $objects = $this->pdo->query("SELECT sql FROM $origin.sqlite_master WHERE tbl_name=" . $this->pdo->quote($table) . " AND type IN ('index','trigger') AND sql IS NOT NULL")->fetchAll();
         $temp = '__acacia_rebuild_' . bin2hex(random_bytes(6));
         $ownsTransaction = !$this->pdo->inTransaction();
         if ($ownsTransaction) $this->beginWrite();
@@ -242,7 +243,7 @@ final class SQLiteConnection
     {
         $sql = trim(rtrim(trim($sql), ';'));
         if (stripos($sql, 'information_schema.') !== false) $this->refreshCatalog();
-        if (preg_match('/^SHOW FULL TABLES/i', $sql)) $sql = "SELECT name FROM main.sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name";
+        if (preg_match('/^SHOW FULL TABLES/i', $sql)) $sql = "SELECT name FROM main.sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name";
         elseif (preg_match('/^SHOW INDEX FROM\s+(' . self::IDENT . ')/i', $sql, $match)) {
             $this->refreshCatalog(); $parameters = [self::unquote($match[1])];
             $sql = 'SELECT index_name AS Key_name FROM information_schema.statistics WHERE table_name=?';

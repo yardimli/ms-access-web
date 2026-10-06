@@ -85,6 +85,52 @@ function clickTarget(attribute, dataset) {
     return { closest: selector => selector === attribute ? { dataset } : null };
 }
 
+function loadStartup(ctx, savedWorkspace = null) {
+    prepareOpening(ctx);
+    Object.assign(ctx, {
+        readWorkspaceState: () => savedWorkspace,
+        workspaceStateStorageKey: 'acaciadb.workspace.v1',
+        restorableViews: () => new Set(),
+        app: { dataset: {} }, tableViewPairs: {}, viewTitles: {}
+    });
+    const source = fs.readFileSync(path.join(__dirname, '../assets/app_events.js'), 'utf8');
+    vm.runInContext(source.slice(source.indexOf('async function showStartupFilePicker()'), source.lastIndexOf('bootstrapApp();')), ctx);
+}
+
+test('first launch goes straight to File Home without trying to load database tables', async () => {
+    const { ctx, backstage, requests } = browser();
+    loadStartup(ctx);
+    ctx.getDatabase = async () => { throw new Error('Must not load tables on first launch'); };
+    await ctx.bootstrapApp();
+    assert.equal(backstage.hidden, false);
+    assert.match(backstage.innerHTML, /Recent databases/);
+    assert.equal(requests.length, 1);
+    assert.match(requests[0].input, /source=files/);
+    assert.equal(ctx.status.textContent, 'Choose a database');
+    assert.doesNotMatch(ctx.content.innerHTML, /Unable to load database/);
+});
+
+test('unavailable saved database falls back to File and clears its rejected cache', async () => {
+    const { ctx, backstage, values } = browser();
+    loadStartup(ctx);
+    ctx.setActiveDatabaseReference('mysql:missing');
+    ctx.getDatabase = async () => { throw new Error('Unable to open the selected database'); };
+    await ctx.bootstrapApp();
+    assert.equal(backstage.hidden, false);
+    assert.equal(ctx.databasePromise, null);
+    assert.equal(values.has('acaciadb.active-database.v1'), false);
+    assert.doesNotMatch(ctx.content.innerHTML, /Unable to load database/);
+});
+
+test('a usable saved workspace still restores without opening File', async () => {
+    const { ctx, backstage } = browser();
+    loadStartup(ctx, { database: 'sqlite:demo', tabs: [] });
+    ctx.setActiveDatabaseReference('sqlite:demo');
+    await ctx.bootstrapApp();
+    assert.equal(backstage.hidden, true);
+    assert.equal(ctx.status.textContent, 'Ready');
+});
+
 test('clicking the demo opens its workspace and closes File, without a preview step', async () => {
     const { ctx, requests, backstage, listeners, values } = browser();
     prepareOpening(ctx);

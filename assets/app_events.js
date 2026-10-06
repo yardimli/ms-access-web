@@ -360,18 +360,39 @@ document.addEventListener('selectionchange', () => {
 document.addEventListener('scroll', positionActiveCellEditor, true);
 window.addEventListener('resize', positionActiveCellEditor);
 
+async function showStartupFilePicker() {
+    databasePromise = null;
+    activeDatabaseReference = 'sqlite:demo';
+    localStorage.removeItem(activeDatabaseStorageKey);
+    currentDatabaseName = '';
+    currentView = '';
+    openTabs = [];
+    window.acaciadbActiveDesignController = null;
+    window.acaciadbActiveObjectController = null;
+    window.acaciadbActiveTableController = null;
+    configureObjectMaps({});
+    renderObjectList({});
+    renderDocumentTabs();
+    updateQuickSaveState();
+    updateContextualRibbon('');
+    renderStatusViewButtons();
+    content.innerHTML = '<div class="p-6 text-neutral-500">Choose a database from File to get started.</div>';
+    status.textContent = 'Choose a database';
+    document.querySelector('#database-title').textContent = 'AcaciaDB';
+    document.title = 'AcaciaDB';
+    await openFileBackstage('home');
+}
+
 async function bootstrapApp() {
     activateRibbonTab('home');
 
     try {
         const savedWorkspace = readWorkspaceState();
-        let db;
-        try { db = await getDatabase(); }
-        catch (error) {
-            if (activeDatabaseReference === 'sqlite:demo') throw error;
-            setActiveDatabaseReference('sqlite:demo'); databasePromise = null;
-            db = await getDatabase();
+        if (!localStorage.getItem(activeDatabaseStorageKey)) {
+            await showStartupFilePicker();
+            return;
         }
+        let db = await getDatabase();
         if (savedWorkspace?.database && savedWorkspace.database !== db.database) {
             try {
                 await postDatabaseAction('open', savedWorkspace.database);
@@ -379,6 +400,7 @@ async function bootstrapApp() {
                 db = await getDatabase();
             } catch (error) {
                 localStorage.removeItem(workspaceStateStorageKey);
+                throw error;
             }
         }
 
@@ -434,8 +456,7 @@ async function bootstrapApp() {
         openTabs = [];
         persistWorkspaceState();
     } catch (error) {
-        content.innerHTML = `<div class="p-6 text-red-700">Unable to load database: ${escapeHtml(error.message)}</div>`;
-        status.textContent = 'Database Error';
+        await showStartupFilePicker();
     }
 }
 
