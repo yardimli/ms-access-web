@@ -35,6 +35,7 @@ $brandAssetVersion = filemtime(__DIR__ . '/assets/acaciadb-icon.png');
     <link rel="stylesheet" href="assets/reports.css">
     <link rel="stylesheet" href="assets/expression-builder.css">
     <link rel="stylesheet" href="assets/tailwind.css?v=<?= $tailwindAssetVersion ?>">
+    <link rel="stylesheet" href="assets/theme.css?v=<?= $themeAssetVersion ?>">
 </head>
 <body class="h-screen w-screen overflow-hidden bg-white text-[13px] text-neutral-900">
     <div id="acaciadb-app" class="flex h-screen w-screen flex-col bg-white" data-initial-view="<?= htmlspecialchars($initialView, ENT_QUOTES) ?>">

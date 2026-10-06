@@ -896,6 +896,14 @@ html[data-theme="dark"] .expression-choice:not(.active) i,
 html[data-theme="dark"] .row-popup-menu i { color: #9acbfa; }
 html[data-theme="dark"] .expression-choice:hover { outline-color: var(--acacia-border); }
 
+html[data-theme="dark"] .database-chat-dialog .acaciadb-dialog-title { background: #762d35; }
+html[data-theme="dark"] .database-chat-dialog .database-chat-help { color: var(--acacia-muted); }
+html[data-theme="dark"] .database-chat-dialog .database-chat-messages { background: var(--acacia-panel); }
+html[data-theme="dark"] .database-chat-dialog .database-chat-message { background: #292f36; border-color: #48515b; }
+html[data-theme="dark"] .database-chat-dialog .database-chat-message.user { background: #293d4d; border-color: #4b687e; }
+html[data-theme="dark"] .database-chat-dialog .dialog-actions { background: transparent !important; }
+html[data-theme="dark"] .database-chat-dialog textarea::placeholder { color: #a5aeb9; }
+
 /* Compact web ribbon: retain group dividers, with no more than four rows per stack. */
 .ribbon-group,
 .home-group,
