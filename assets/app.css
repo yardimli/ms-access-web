@@ -1953,6 +1953,13 @@ select,
 }
 
 .quick-btn:disabled { opacity: .35; cursor: default; }
+
+#acaciadb-app > header :is(button, select, a[href], [role="button"]):not(:disabled):not([aria-disabled="true"]):not(.disabled) {
+    cursor: pointer;
+}
+#acaciadb-app > header :is(:disabled, [aria-disabled="true"], .disabled) {
+    cursor: default;
+}
 .file-toolbar, .file-database-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 18px 0; }
 .file-toolbar button, .file-database-actions button, .file-upload-button, .file-connection-form button { padding: 10px 16px; border: 1px solid #aab4bd; border-radius: 4px; background: #fff; color: #243646; cursor: pointer; }
 .file-upload-button { display: inline-flex; gap: 10px; align-items: center; }
