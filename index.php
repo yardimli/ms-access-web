@@ -140,6 +140,7 @@ $brandAssetVersion = filemtime(__DIR__ . '/assets/acaciadb-icon.png');
     <script src="assets/forms.js"></script>
     <script src="assets/queries.js"></script>
     <script src="assets/reports.js"></script>
+    <script src="assets/app_storage.js?v=<?= $appAssetVersion ?>"></script>
     <script src="assets/app_config.js?v=<?= $appAssetVersion ?>"></script>
     <script src="assets/app_data.js?v=<?= $appAssetVersion ?>"></script>
     <script src="assets/app_file.js?v=<?= $appAssetVersion ?>"></script>

@@ -30,6 +30,7 @@ try {
         'ok' => true,
         'overview' => true,
         'database' => active_database_name(),
+        'displayName' => str_starts_with(active_database_name(), 'sqlite:') ? workspace_database_info(workspace_file_id(active_database_name()))['name'] : preg_replace('/^mysql:/', '', active_database_name()),
         'tables' => $tables,
         'forms' => $objects('form', 'form-'),
         'queries' => $objects('query', 'query-'),

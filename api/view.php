@@ -19,13 +19,13 @@ function view_payload(string $view, string $type, string $mode, string $object, 
     ];
 }
 
-function object_payload(mysqli $db, string $type, string $name): ?array
+function object_payload(mysqli|SQLiteConnection $db, string $type, string $name): ?array
 {
     $definition = fetch_object($db, $type, $name);
     return $definition ? [$name => $definition] : null;
 }
 
-function table_reference_payload(mysqli $db, array $tableNames, bool $includeRows): array
+function table_reference_payload(mysqli|SQLiteConnection $db, array $tableNames, bool $includeRows): array
 {
     $tables = [];
     foreach ($tableNames as $name) {

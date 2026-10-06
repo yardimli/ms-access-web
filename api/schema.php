@@ -9,7 +9,7 @@ function schema_request(): array
     return is_array($data) ? $data : $_POST;
 }
 
-function schema_table_payload(mysqli $db, string $tableName, array $request): array
+function schema_table_payload(mysqli|SQLiteConnection $db, string $tableName, array $request): array
 {
     [$skip, $limit] = normalize_table_page(
         (int) ($request['skip'] ?? 0),
@@ -22,8 +22,8 @@ function validate_field_name(string $name): string
 {
     $name = trim($name);
 
-    if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]{0,63}$/', $name)) {
-        throw new RuntimeException('Field names must start with a letter or underscore and contain only letters, numbers, and underscores.');
+    if (!preg_match('/^[^\x00-\x1F]{1,64}$/u', $name)) {
+        throw new RuntimeException('Field names must contain 1 to 64 characters and no control characters.');
     }
 
     return $name;
@@ -191,7 +191,7 @@ function validate_mysql_column_type(string $type): string
     return $type;
 }
 
-function fetch_column_definition(mysqli $db, string $tableName, string $columnName): ?array
+function fetch_column_definition(mysqli|SQLiteConnection $db, string $tableName, string $columnName): ?array
 {
     $stmt = $db->prepare(
         'SELECT column_type, is_nullable, column_default, extra, column_comment
@@ -208,7 +208,7 @@ function fetch_column_definition(mysqli $db, string $tableName, string $columnNa
     return $row ?: null;
 }
 
-function column_exists(mysqli $db, string $tableName, string $columnName): bool
+function column_exists(mysqli|SQLiteConnection $db, string $tableName, string $columnName): bool
 {
     return fetch_column_definition($db, $tableName, $columnName) !== null;
 }
@@ -229,7 +229,7 @@ function lookup_storage_mysql_type(array $lookup): ?string
     return ($lookup['valueType'] ?? 'string') === 'integer' ? 'INT' : 'VARCHAR(255)';
 }
 
-function lookup_column_position(mysqli $db, string $tableName, string $afterColumn): int
+function lookup_column_position(mysqli|SQLiteConnection $db, string $tableName, string $afterColumn): int
 {
     [$columns] = fetch_table_columns($db, $tableName);
     if ($afterColumn !== '') {
@@ -244,6 +244,7 @@ function lookup_column_position(mysqli $db, string $tableName, string $afterColu
 
 function column_definition_sql(array $column, ?string $comment = null): string
 {
+    global $db;
     $sql = $column['column_type'];
     $sql .= strtoupper($column['is_nullable']) === 'NO' ? ' NOT NULL' : ' NULL';
 
@@ -253,7 +254,7 @@ function column_definition_sql(array $column, ?string $comment = null): string
         if (in_array($upper, ['CURRENT_TIMESTAMP', 'CURRENT_TIMESTAMP()'], true)) {
             $sql .= ' DEFAULT CURRENT_TIMESTAMP';
         } else {
-            $sql .= " DEFAULT '" . addslashes((string) $default) . "'";
+            $sql .= " DEFAULT '" . $db->real_escape_string((string) $default) . "'";
         }
     }
 
@@ -263,13 +264,13 @@ function column_definition_sql(array $column, ?string $comment = null): string
 
     $columnComment = $comment ?? (string) ($column['column_comment'] ?? '');
     if ($columnComment !== '') {
-        $sql .= " COMMENT '" . addslashes($columnComment) . "'";
+        $sql .= " COMMENT '" . $db->real_escape_string($columnComment) . "'";
     }
 
     return $sql;
 }
 
-function update_column_metadata(mysqli $db, string $tableName, string $columnName, string $friendlyName, ?string $acaciadbType = null, ?string $mysqlType = null): void
+function update_column_metadata(mysqli|SQLiteConnection $db, string $tableName, string $columnName, string $friendlyName, ?string $acaciadbType = null, ?string $mysqlType = null): void
 {
     $metadata = fetch_table_metadata($db, $tableName);
     $metadata['columns'] ??= [];
@@ -322,7 +323,7 @@ function lookup_relationship_table_name(string $leftTable, string $rightTable): 
     return substr($left . '_' . $right . '_relationship', 0, 64);
 }
 
-function first_primary_key(mysqli $db, string $tableName): string
+function first_primary_key(mysqli|SQLiteConnection $db, string $tableName): string
 {
     $stmt = $db->prepare(
         'SELECT column_name
@@ -338,7 +339,7 @@ function first_primary_key(mysqli $db, string $tableName): string
     return (string) ($stmt->get_result()->fetch_assoc()['column_name'] ?? '');
 }
 
-function lookup_key_mysql_type(mysqli $db, string $tableName, string $keyColumn): string
+function lookup_key_mysql_type(mysqli|SQLiteConnection $db, string $tableName, string $keyColumn): string
 {
     $definition = fetch_column_definition($db, $tableName, $keyColumn);
     if (!$definition) {
@@ -348,7 +349,7 @@ function lookup_key_mysql_type(mysqli $db, string $tableName, string $keyColumn)
     return strtoupper((string) $definition['column_type']);
 }
 
-function normalize_lookup_config(mysqli $db, string $ownerTable, array $config, ?array $existingLookup = null): array
+function normalize_lookup_config(mysqli|SQLiteConnection $db, string $ownerTable, array $config, ?array $existingLookup = null): array
 {
     $existingKind = $existingLookup
         ? (string) ($existingLookup['kind'] ?? (!empty($existingLookup['sourceObjectName']) || !empty($existingLookup['sourceTable']) ? 'table' : 'static'))
@@ -490,7 +491,7 @@ function normalize_lookup_config(mysqli $db, string $ownerTable, array $config, 
     return $lookup;
 }
 
-function fetch_column_key(mysqli $db, string $tableName, string $columnName): string
+function fetch_column_key(mysqli|SQLiteConnection $db, string $tableName, string $columnName): string
 {
     $stmt = $db->prepare(
         'SELECT column_key
@@ -513,7 +514,7 @@ function schema_index_name(string $columnName, bool $unique): string
     return substr($prefix . preg_replace('/[^A-Za-z0-9_]+/', '_', $columnName), 0, 60);
 }
 
-function index_exists(mysqli $db, string $tableName, string $indexName): bool
+function index_exists(mysqli|SQLiteConnection $db, string $tableName, string $indexName): bool
 {
     $stmt = $db->prepare(
         'SELECT 1
@@ -529,7 +530,7 @@ function index_exists(mysqli $db, string $tableName, string $indexName): bool
     return (bool) $stmt->get_result()->fetch_assoc();
 }
 
-function column_has_blank_values(mysqli $db, string $tableName, string $columnName, bool $checkEmptyString): bool
+function column_has_blank_values(mysqli|SQLiteConnection $db, string $tableName, string $columnName, bool $checkEmptyString): bool
 {
     $where = db_identifier($columnName) . ' IS NULL';
     if ($checkEmptyString) {
@@ -545,7 +546,7 @@ function column_allows_empty_string_check(array $column): bool
     return str_contains($type, 'char') || str_contains($type, 'text');
 }
 
-function column_has_duplicates(mysqli $db, string $tableName, string $columnName): bool
+function column_has_duplicates(mysqli|SQLiteConnection $db, string $tableName, string $columnName): bool
 {
     $sql = 'SELECT ' . db_identifier($columnName) .
         ' FROM ' . db_identifier($tableName) .
@@ -555,7 +556,7 @@ function column_has_duplicates(mysqli $db, string $tableName, string $columnName
     return (bool) $db->query($sql)->fetch_assoc();
 }
 
-function verify_column_type_change(mysqli $db, string $tableName, string $columnName, string $newType, array $definition): void
+function verify_column_type_change(mysqli|SQLiteConnection $db, string $tableName, string $columnName, string $newType, array $definition): void
 {
     $tempName = 'tmp_acaciadb_type_' . bin2hex(random_bytes(6));
     $testDefinition = $definition;
@@ -830,7 +831,7 @@ try {
         $db->query(
             'ALTER TABLE ' . db_identifier($resolvedTable) .
             ' ADD COLUMN ' . db_identifier($fieldName) . ' ' . $storageMysqlType . ' NULL' .
-            ($comment !== '' ? " COMMENT '" . addslashes($comment) . "'" : '') .
+            ($comment !== '' ? " COMMENT '" . $db->real_escape_string($comment) . "'" : '') .
             $afterClause
         );
         update_column_metadata($db, $resolvedTable, $fieldName, $friendlyName, $storageAcaciaDBType, $storageMysqlType);
@@ -881,7 +882,7 @@ try {
             $db->query(
                 'ALTER TABLE ' . db_identifier($resolvedTable) .
                 ' ADD COLUMN ' . db_identifier($fieldName) . ' ' . $mysqlType . ' NULL' .
-                ($comment !== '' ? " COMMENT '" . addslashes($comment) . "'" : '') .
+                ($comment !== '' ? " COMMENT '" . $db->real_escape_string($comment) . "'" : '') .
                 $afterClause
             );
         }

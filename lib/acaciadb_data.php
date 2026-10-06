@@ -65,7 +65,7 @@ function label_from_column(string $name): string
     return trim($label);
 }
 
-function acaciadb_internal_table_exists(mysqli $db, string $tableName): bool
+function acaciadb_internal_table_exists(mysqli|SQLiteConnection $db, string $tableName): bool
 {
     $stmt = $db->prepare(
         'SELECT 1 FROM information_schema.tables
@@ -96,7 +96,7 @@ function migrate_acaciadb_definition_keys(mixed $value): mixed
     return $migrated;
 }
 
-function migrate_acaciadb_definition_rows(mysqli $db): void
+function migrate_acaciadb_definition_rows(mysqli|SQLiteConnection $db): void
 {
     $result = $db->query('SELECT id, definition_json FROM acaciadb_object_definitions');
     $stmt = $db->prepare('UPDATE acaciadb_object_definitions SET definition_json = ? WHERE id = ?');
@@ -113,8 +113,14 @@ function migrate_acaciadb_definition_rows(mysqli $db): void
     }
 }
 
-function ensure_acaciadb_storage(mysqli $db): void
+function ensure_acaciadb_storage(mysqli|SQLiteConnection $db): void
 {
+    if ($db instanceof SQLiteConnection) {
+        $db->pdo->exec('CREATE TABLE IF NOT EXISTS acaciadb_object_definitions (id INTEGER PRIMARY KEY AUTOINCREMENT, object_type TEXT NOT NULL, object_name TEXT NOT NULL COLLATE NOCASE, definition_json TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE(object_type, object_name))');
+        $db->pdo->exec('CREATE TABLE IF NOT EXISTS acaciadb_column_history (id INTEGER PRIMARY KEY AUTOINCREMENT, table_name TEXT NOT NULL, column_name TEXT NOT NULL, primary_key_value TEXT NOT NULL, value_text TEXT, changed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)');
+        $db->pdo->exec('CREATE INDEX IF NOT EXISTS idx_acaciadb_column_history_lookup ON acaciadb_column_history(table_name, column_name, primary_key_value, changed_at)');
+        return;
+    }
     static $initialized = [];
     $cacheKey = spl_object_id($db) . ':' . (string) $db->thread_id;
     if (isset($initialized[$cacheKey])) {
@@ -201,17 +207,17 @@ function ensure_acaciadb_storage(mysqli $db): void
     $initialized[$cacheKey] = true;
 }
 
-function ensure_table_metadata_storage(mysqli $db): void
+function ensure_table_metadata_storage(mysqli|SQLiteConnection $db): void
 {
     ensure_acaciadb_storage($db);
 }
 
-function ensure_column_history_storage(mysqli $db): void
+function ensure_column_history_storage(mysqli|SQLiteConnection $db): void
 {
     ensure_acaciadb_storage($db);
 }
 
-function fetch_table_metadata(mysqli $db, string $tableName): array
+function fetch_table_metadata(mysqli|SQLiteConnection $db, string $tableName): array
 {
     ensure_table_metadata_storage($db);
     $stmt = $db->prepare(
@@ -233,7 +239,7 @@ function fetch_table_metadata(mysqli $db, string $tableName): array
     return is_array($metadata) ? $metadata : ['columns' => []];
 }
 
-function save_table_metadata(mysqli $db, string $tableName, array $metadata): void
+function save_table_metadata(mysqli|SQLiteConnection $db, string $tableName, array $metadata): void
 {
     ensure_table_metadata_storage($db);
     $json = json_encode($metadata, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
@@ -260,7 +266,7 @@ function width_for_column(string $name, string $type): int
     return 110;
 }
 
-function fetch_table_names(mysqli $db): array
+function fetch_table_names(mysqli|SQLiteConnection $db): array
 {
     ensure_acaciadb_storage($db);
     $result = $db->query('SHOW FULL TABLES WHERE Table_type = "BASE TABLE"');
@@ -279,7 +285,7 @@ function fetch_table_names(mysqli $db): array
     return $tables;
 }
 
-function physical_table_exists(mysqli $db, string $tableName): bool
+function physical_table_exists(mysqli|SQLiteConnection $db, string $tableName): bool
 {
     $stmt = $db->prepare(
         'SELECT 1
@@ -304,7 +310,7 @@ function lookup_option_label(mixed $option): string
     return is_array($option) ? (string) ($option['value'] ?? $option['label'] ?? $option['key'] ?? '') : (string) $option;
 }
 
-function hydrate_lookup_metadata(mysqli $db, string $tableName, array $columns, string $primaryKey): array
+function hydrate_lookup_metadata(mysqli|SQLiteConnection $db, string $tableName, array $columns, string $primaryKey): array
 {
     foreach ($columns as &$column) {
         $lookup = $column['lookup'] ?? null;
@@ -376,7 +382,7 @@ function hydrate_lookup_metadata(mysqli $db, string $tableName, array $columns, 
     return $columns;
 }
 
-function fetch_table_columns(mysqli $db, string $tableName): array
+function fetch_table_columns(mysqli|SQLiteConnection $db, string $tableName): array
 {
     $metadata = fetch_table_metadata($db, $tableName);
     $columnMetadata = $metadata['columns'] ?? [];
@@ -421,7 +427,11 @@ function fetch_table_columns(mysqli $db, string $tableName): array
             'validationRule' => (string) ($columnMetadata[$row['column_name']]['validationRule'] ?? ''),
             'validationJavascript' => (string) ($columnMetadata[$row['column_name']]['validationJavascript'] ?? ''),
             'validationInterpretNatural' => (bool) ($columnMetadata[$row['column_name']]['validationInterpretNatural'] ?? false),
-            'comment' => $row['column_comment'] ?? '',
+            'comment' => $columnDefinition['comment'] ?? $row['column_comment'] ?? '',
+            'inputMask' => $columnDefinition['inputMask'] ?? '',
+            'inputMaskName' => $columnDefinition['inputMaskName'] ?? '',
+            'inputMaskPlaceholder' => $columnDefinition['inputMaskPlaceholder'] ?? '_',
+            'inputMaskStoreSymbols' => $columnDefinition['inputMaskStoreSymbols'] ?? true,
             'type' => $acaciadbType,
             'inferredAcaciaDBType' => $inferredAcaciaDBType,
             'mysqlType' => (string) ($columnMetadata[$row['column_name']]['mysqlType'] ?? $mysqlType),
@@ -510,13 +520,13 @@ function normalize_table_page(int $skip = 0, int $limit = 500): array
     return [max(0, $skip), max(1, min(2000, $limit))];
 }
 
-function fetch_table_row_count(mysqli $db, string $tableName): int
+function fetch_table_row_count(mysqli|SQLiteConnection $db, string $tableName): int
 {
     $result = $db->query('SELECT COUNT(*) AS total_rows FROM ' . db_identifier($tableName));
     return (int) (($result->fetch_assoc()['total_rows'] ?? 0));
 }
 
-function fetch_table_indexes(mysqli $db, string $tableName): array
+function fetch_table_indexes(mysqli|SQLiteConnection $db, string $tableName): array
 {
     $stmt = $db->prepare(
         'SELECT index_name, column_name, non_unique, seq_in_index, collation
@@ -541,7 +551,7 @@ function fetch_table_indexes(mysqli $db, string $tableName): array
     return $indexes;
 }
 
-function fetch_table_rows(mysqli $db, string $tableName, string $primaryKey = '', int $skip = 0, int $limit = 500): array
+function fetch_table_rows(mysqli|SQLiteConnection $db, string $tableName, string $primaryKey = '', int $skip = 0, int $limit = 500): array
 {
     [$skip, $limit] = normalize_table_page($skip, $limit);
     $orderSql = $primaryKey !== '' ? ' ORDER BY ' . db_identifier($primaryKey) : '';
@@ -558,7 +568,7 @@ function fetch_table_rows(mysqli $db, string $tableName, string $primaryKey = ''
     return $rows;
 }
 
-function fetch_table_row_by_primary_key(mysqli $db, string $tableName, string $primaryKey, mixed $value): ?array
+function fetch_table_row_by_primary_key(mysqli|SQLiteConnection $db, string $tableName, string $primaryKey, mixed $value): ?array
 {
     if ($primaryKey === '' || $value === null || $value === '') {
         return null;
@@ -573,7 +583,7 @@ function fetch_table_row_by_primary_key(mysqli $db, string $tableName, string $p
     return $row ?: null;
 }
 
-function fetch_table_payload(mysqli $db, string $tableName, bool $includeRows = true, int $skip = 0, int $limit = 500): array
+function fetch_table_payload(mysqli|SQLiteConnection $db, string $tableName, bool $includeRows = true, int $skip = 0, int $limit = 500): array
 {
     [$columns, $primaryKey] = fetch_table_columns($db, $tableName);
     $columns = hydrate_lookup_metadata($db, $tableName, $columns, $primaryKey);
@@ -675,7 +685,7 @@ function fetch_table_payload(mysqli $db, string $tableName, bool $includeRows = 
     return $payload;
 }
 
-function fetch_object_names(mysqli $db, string $type): array
+function fetch_object_names(mysqli|SQLiteConnection $db, string $type): array
 {
     ensure_acaciadb_storage($db);
     $stmt = $db->prepare('SELECT object_name FROM acaciadb_object_definitions WHERE object_type = ? ORDER BY object_name');
@@ -690,7 +700,7 @@ function fetch_object_names(mysqli $db, string $type): array
     return $names;
 }
 
-function fetch_objects(mysqli $db, string $type): array
+function fetch_objects(mysqli|SQLiteConnection $db, string $type): array
 {
     ensure_acaciadb_storage($db);
     $stmt = $db->prepare(
@@ -710,7 +720,7 @@ function fetch_objects(mysqli $db, string $type): array
     return $objects;
 }
 
-function fetch_object(mysqli $db, string $type, string $name): ?array
+function fetch_object(mysqli|SQLiteConnection $db, string $type, string $name): ?array
 {
     ensure_acaciadb_storage($db);
     $stmt = $db->prepare(
@@ -727,7 +737,7 @@ function fetch_object(mysqli $db, string $type, string $name): ?array
     return $row ? json_decode($row['definition_json'], true, 512, JSON_THROW_ON_ERROR) : null;
 }
 
-function resolve_table_name(mysqli $db, string $requested): ?string
+function resolve_table_name(mysqli|SQLiteConnection $db, string $requested): ?string
 {
     $lower = strtolower($requested);
     foreach (fetch_table_names($db) as $table) {

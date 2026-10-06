@@ -462,7 +462,7 @@ async function closeActiveTab() {
     }
 
     const nextTab = openTabs[Math.max(0, activeIndex - 1)];
-    loadView(nextTab.view);
+    await loadView(nextTab.view);
 }
 
 async function switchTableMode(mode) {

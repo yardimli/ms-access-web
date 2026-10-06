@@ -16,6 +16,21 @@
             return;
         }
 
+        if (query.sourceSql !== undefined) {
+            builder.innerHTML = `<div class="imported-query-editor"><h2>${escapeHtml(builder.dataset.queryId)}</h2><p>Imported Access SQL definition. You can edit and save the definition here. Access-specific SQL needs translation before it can run on SQLite.</p><textarea aria-label="Imported query SQL" spellcheck="false">${escapeHtml(query.sourceSql)}</textarea></div>`;
+            const editor = builder.querySelector('textarea');
+            let baseline = editor.value;
+            window.acaciadbActiveObjectController = {
+                isDirty: () => editor.value !== baseline,
+                async save() {
+                    const snapshot = editor.value;
+                    await databaseApi('api/objects.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: builder.dataset.queryId, definition: { ...query, tables: query.tables || [], fields: query.fields || [], connections: query.connections || [], positions: query.positions || {}, sourceSql: snapshot } }) });
+                    baseline = snapshot; status.textContent = 'Query definition saved';
+                }
+            };
+            return;
+        }
+
         const positions = { ...(query.positions || {}) };
         const tables = new Set((query.tables || [])
             .map(table => resolveTableName(db, table))

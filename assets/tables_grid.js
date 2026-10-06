@@ -605,7 +605,8 @@ function resetRowsToOriginalOrder(rows) {
 }
 
 function tablePrefsKey(tableName) {
-    return `acaciadbWeb.database.${encodeURIComponent(currentDatabaseName)}.table.${tableName}.viewPrefs`;
+    const connection = currentDatabaseName.startsWith('mysql:') && typeof mysqlConnectionIdentity === 'function' ? mysqlConnectionIdentity() : '';
+    return `acaciadbWeb.database.${encodeURIComponent(connection + currentDatabaseName)}.table.${tableName}.viewPrefs`;
 }
 
 function readTablePrefs(tableName) {

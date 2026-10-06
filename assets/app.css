@@ -1709,6 +1709,11 @@ select,
     text-align: left;
 }
 
+.database-list-entry { display: flex; align-items: stretch; }
+.database-list-entry .database-list-row { flex: 1; min-width: 0; }
+.database-details-button { border: 0; border-bottom: 1px solid #ddd; background: transparent; padding: 0 12px; color: #2563a6; cursor: pointer; }
+.database-details-button:hover { background: #e9eef5; }
+
 .database-list-row:hover,
 .database-list-row.active {
     background: white;
@@ -1938,5 +1943,30 @@ select,
 }
 
 .quick-btn:disabled { opacity: .35; cursor: default; }
+.file-toolbar, .file-database-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 18px 0; }
+.file-toolbar button, .file-database-actions button, .file-upload-button, .file-connection-form button { padding: 10px 16px; border: 1px solid #aab4bd; border-radius: 4px; background: #fff; color: #243646; cursor: pointer; }
+.file-upload-button { display: inline-flex; gap: 10px; align-items: center; }
+.file-server-tile { display: flex; align-items: center; gap: 18px; width: 100%; max-width: 640px; padding: 22px; margin-top: 28px; border: 1px solid #bcc5cc; border-radius: 6px; text-align: left; background: #fff; }
+.file-server-tile span { display: grid; flex: 1; gap: 6px; }
+.file-server-tile small, .file-help { color: #667582; font-size: 13px; line-height: 1.6; }
+.file-help { margin: 12px 0; max-width: 780px; }
+.file-connection-form { display: grid; grid-template-columns: minmax(170px, 2fr) minmax(80px, 1fr) minmax(150px, 2fr) minmax(150px, 2fr); gap: 16px; max-width: 1000px; margin: 24px 0 8px; }
+.file-connection-form label, .file-import-body > label { display: grid; gap: 8px; font-size: 14px; }
+.file-connection-form input, .new-database-form select, .file-import-body > label input { min-width: 0; padding: 9px 12px; border: 1px solid #aab4bd; background: #fff; color: #243646; border-radius: 3px; }
+.file-connection-form .file-toolbar { grid-column: 1 / -1; }
+.file-import-dialog { width: min(850px, calc(100vw - 32px)); max-width: none; }
+.file-import-body { max-height: calc(100vh - 180px); overflow: auto; padding: 22px; display: grid; gap: 16px; }
+.file-import-body fieldset { border: 1px solid #bec8d0; padding: 12px; }
+.file-import-body legend { padding: 0 8px; font-weight: 600; }
+.file-import-object { display: flex; align-items: start; gap: 12px; padding: 8px; }
+.file-import-object input { margin-top: 4px; }
+.file-import-object span { display: grid; gap: 4px; }
+.file-import-object small { color: #667582; font-size: 12px; }
+.file-import-object:has(input:disabled) { opacity: .65; }
+[data-import-error] { color: #b3261e; }
+.imported-query-editor { display: grid; gap: 16px; height: 100%; padding: 24px; grid-template-rows: auto auto 1fr; }
+.imported-query-editor textarea { width: 100%; min-height: 260px; padding: 16px; border: 1px solid #aab4bd; background: #fff; color: #222; font-family: Consolas, monospace; user-select: text; }
+html[data-theme="dark"] .file-toolbar button, html[data-theme="dark"] .file-database-actions button, html[data-theme="dark"] .file-upload-button, html[data-theme="dark"] .file-server-tile, html[data-theme="dark"] .file-connection-form input, html[data-theme="dark"] .file-connection-form button, html[data-theme="dark"] .new-database-form select, html[data-theme="dark"] .file-import-body input, html[data-theme="dark"] .imported-query-editor textarea { background: #29323b; color: #e4e8eb; border-color: #536170; }
+@media (max-width: 800px) { .file-connection-form { grid-template-columns: 1fr 1fr; } }
 .design-grid [draggable="true"] { cursor: grab; }
 .design-grid tr.drag-over { outline: 2px solid #3874ad; }

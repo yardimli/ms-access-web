@@ -5,3 +5,6 @@ php_errors.log
 .env
 logs/
 node_modules/
+tools/access/lib/
+tools/access/*.class
+tests/.tmp/

@@ -47,7 +47,7 @@ function normalize_record_value(mixed $value, array $column): mixed
     return $text;
 }
 
-function sql_literal(mysqli $db, mixed $value): string
+function sql_literal(mysqli|SQLiteConnection $db, mixed $value): string
 {
     if ($value === null) {
         return 'NULL';
@@ -56,8 +56,9 @@ function sql_literal(mysqli $db, mixed $value): string
     return "'" . $db->real_escape_string((string) $value) . "'";
 }
 
-function ensure_autonumber_primary_key(mysqli $db, string $tableName, string $primaryKey, array $columns): void
+function ensure_autonumber_primary_key(mysqli|SQLiteConnection $db, string $tableName, string $primaryKey, array $columns): void
 {
+    if ($db instanceof SQLiteConnection) return;
     $primaryColumn = null;
     foreach ($columns as $column) {
         if ($column['name'] === $primaryKey) {
@@ -92,7 +93,7 @@ function ensure_autonumber_primary_key(mysqli $db, string $tableName, string $pr
     );
 }
 
-function refresh_table_response(mysqli $db, string $tableName, ?array $row = null, int $skip = 0, int $limit = 500): void
+function refresh_table_response(mysqli|SQLiteConnection $db, string $tableName, ?array $row = null, int $skip = 0, int $limit = 500): void
 {
     json_response([
         'ok' => true,
@@ -102,7 +103,7 @@ function refresh_table_response(mysqli $db, string $tableName, ?array $row = nul
     ]);
 }
 
-function record_history_entry(mysqli $db, string $tableName, string $columnName, mixed $primaryKeyValue, mixed $value): void
+function record_history_entry(mysqli|SQLiteConnection $db, string $tableName, string $columnName, mixed $primaryKeyValue, mixed $value): void
 {
     ensure_column_history_storage($db);
     $stmt = $db->prepare(
@@ -115,7 +116,7 @@ function record_history_entry(mysqli $db, string $tableName, string $columnName,
     $stmt->execute();
 }
 
-function fetch_record_history(mysqli $db, string $tableName, string $columnName, mixed $primaryKeyValue): array
+function fetch_record_history(mysqli|SQLiteConnection $db, string $tableName, string $columnName, mixed $primaryKeyValue): array
 {
     ensure_column_history_storage($db);
     $stmt = $db->prepare(
@@ -182,7 +183,7 @@ function multiple_lookup_json(mixed $value, array $lookup): string
     ), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 }
 
-function sync_lookup_relationships(mysqli $db, array $columns, string $primaryKeyValue, array $row): void
+function sync_lookup_relationships(mysqli|SQLiteConnection $db, array $columns, string $primaryKeyValue, array $row): void
 {
     foreach (lookup_relationship_columns($columns) as $column) {
         $lookup = $column['lookup'];
@@ -225,6 +226,10 @@ try {
     }
 
     [$columns, $primaryKey] = fetch_table_columns($db, $resolvedTable);
+    if ($db instanceof SQLiteConnection && in_array($action, ['update', 'delete'], true)
+        && count(array_filter($columns, fn ($column) => !empty($column['primaryKey']))) !== 1) {
+        throw new RuntimeException('Editing or deleting existing records requires a single-column primary key. Add one in Design View first.');
+    }
     $columns = hydrate_lookup_metadata($db, $resolvedTable, $columns, $primaryKey);
     ensure_autonumber_primary_key($db, $resolvedTable, $primaryKey, $columns);
     $row = is_array($request['row'] ?? null) ? $request['row'] : [];

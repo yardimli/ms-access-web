@@ -18,6 +18,10 @@ try {
         $existing[$key] = $definition[$key];
     }
     $json = json_encode($existing, JSON_THROW_ON_ERROR);
+    if (array_key_exists('sourceSql', $definition)) {
+        $existing['sourceSql'] = (string) $definition['sourceSql'];
+        $json = json_encode($existing, JSON_THROW_ON_ERROR);
+    }
     $stmt = $db->prepare('UPDATE acaciadb_object_definitions SET definition_json = ? WHERE object_type = "query" AND object_name = ?');
     $stmt->bind_param('ss', $json, $name);
     $stmt->execute();

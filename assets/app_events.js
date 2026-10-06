@@ -365,7 +365,13 @@ async function bootstrapApp() {
 
     try {
         const savedWorkspace = readWorkspaceState();
-        let db = await getDatabase();
+        let db;
+        try { db = await getDatabase(); }
+        catch (error) {
+            if (activeDatabaseReference === 'sqlite:demo') throw error;
+            setActiveDatabaseReference('sqlite:demo'); databasePromise = null;
+            db = await getDatabase();
+        }
         if (savedWorkspace?.database && savedWorkspace.database !== db.database) {
             try {
                 await postDatabaseAction('open', savedWorkspace.database);
@@ -380,8 +386,8 @@ async function bootstrapApp() {
         configureObjectMaps(db);
         renderObjectList(db);
         const databaseTitle = document.querySelector('#database-title');
-        if (databaseTitle) databaseTitle.textContent = `${db.database || 'AcaciaDB'} : AcaciaDB`;
-        document.title = `${db.database || 'Database'} - AcaciaDB`;
+        if (databaseTitle) databaseTitle.textContent = `${db.displayName || db.database || 'AcaciaDB'} : AcaciaDB`;
+        document.title = `${db.displayName || db.database || 'Database'} - AcaciaDB`;
 
         const availableViews = restorableViews(db);
         const canRestore = savedWorkspace?.database === currentDatabaseName;

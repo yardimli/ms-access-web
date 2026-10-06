@@ -81,60 +81,68 @@ function database_table_overview(mysqli $db, string $database): array
     return $tables;
 }
 
+function file_table_overview(SQLiteConnection $db): array
+{
+    return array_map(function ($name) use ($db) {
+        [$columns] = fetch_table_columns($db, $name);
+        return ['name' => $name, 'columns' => count($columns), 'rows' => fetch_table_row_count($db, $name), 'sizeBytes' => 0];
+    }, fetch_table_names($db));
+}
+
 try {
-    $server = db_connect(false);
+    browser_workspace_key();
     $request = database_request();
-
-    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $method = $_SERVER['REQUEST_METHOD'];
+    $reference = (string) ($request['database'] ?? $_GET['database'] ?? '');
+    $source = (string) ($_GET['source'] ?? 'files');
+    if ($method === 'POST') {
         $action = (string) ($request['action'] ?? '');
-        $database = validate_database_name((string) ($request['database'] ?? ''));
-
+        if ($action === 'create' && ($request['engine'] ?? 'sqlite') === 'sqlite') {
+            $name = trim((string) ($request['name'] ?? $reference));
+            if ($name === '' || strlen($name) > 120) throw new RuntimeException('Enter a database name of up to 120 characters.');
+            $temporary = browser_workspace_dir() . '/' . bin2hex(random_bytes(16)) . '.creating';
+            $created = new SQLiteConnection($temporary);
+            ensure_acaciadb_storage($created);
+            $created = null;
+            $file = register_workspace_database($temporary, $name);
+            json_response(['ok' => true, 'database' => $file['id'], 'item' => $file, 'tables' => []]);
+            exit;
+        }
+        if ($action === 'open' && str_starts_with($reference, 'sqlite:')) {
+            if ($reference === 'sqlite:demo') ensure_browser_demo();
+            $db = new SQLiteConnection(workspace_database_path($reference), $reference);
+            json_response(['ok' => true, 'database' => $reference, 'item' => workspace_database_info(workspace_file_id($reference)), 'tables' => file_table_overview($db)]);
+            exit;
+        }
+        $name = validate_database_name(str_starts_with($reference, 'mysql:') ? substr($reference, 6) : $reference);
+        $server = db_connect(false);
         if ($action === 'create') {
-            if (database_exists($server, $database)) {
-                throw new RuntimeException('A database with that name already exists.');
-            }
-            $server->query(
-                'CREATE DATABASE ' . db_identifier($database) .
-                ' CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci'
-            );
-        } elseif ($action !== 'open') {
-            throw new RuntimeException('Unsupported database action.');
-        }
-
-        if (!database_exists($server, $database)) {
-            throw new RuntimeException('The selected database is no longer available.');
-        }
-
-        $server->select_db($database);
+            if (database_exists($server, $name)) throw new RuntimeException('A database with that name already exists.');
+            $server->query('CREATE DATABASE ' . db_identifier($name) . ' CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
+        } elseif ($action !== 'open') throw new RuntimeException('Unsupported database action.');
+        if (!database_exists($server, $name)) throw new RuntimeException('The selected database is no longer available.');
+        $server->select_db($name);
         ensure_acaciadb_storage($server);
-        set_active_database_name($database);
-
-        json_response([
-            'ok' => true,
-            'database' => $database,
-            'tables' => database_table_overview($server, $database),
-        ]);
+        json_response(['ok' => true, 'database' => 'mysql:' . $name, 'item' => ['id' => 'mysql:' . $name, 'name' => $name, 'engine' => 'mysql'], 'tables' => database_table_overview($server, $name)]);
         exit;
     }
-
-    $selected = trim((string) ($_GET['database'] ?? ''));
-    $payload = [
-        'ok' => true,
-        'activeDatabase' => active_database_name(),
-        'databases' => database_catalog($server),
-    ];
-
-    if ($selected !== '') {
-        $selected = validate_database_name($selected);
-        if (!database_exists($server, $selected)) {
-            throw new RuntimeException('The selected database is no longer available.');
+    $payload = ['ok' => true, 'activeDatabase' => active_database_name(), 'databases' => []];
+    if ($reference !== '') {
+        if (str_starts_with($reference, 'sqlite:')) {
+            if ($reference === 'sqlite:demo') ensure_browser_demo();
+            $db = new SQLiteConnection(workspace_database_path($reference), $reference);
+            $payload['item'] = workspace_database_info(workspace_file_id($reference));
+            $payload['tables'] = file_table_overview($db);
+        } else {
+            $name = validate_database_name(str_starts_with($reference, 'mysql:') ? substr($reference, 6) : $reference);
+            $server = db_connect(true, 'mysql:' . $name);
+            $payload['tables'] = database_table_overview($server, $name);
+            $payload['item'] = ['id' => 'mysql:' . $name, 'name' => $name, 'engine' => 'mysql'];
         }
-        $server->select_db($selected);
-        ensure_acaciadb_storage($server);
-        $payload['selectedDatabase'] = $selected;
-        $payload['tables'] = database_table_overview($server, $selected);
-    }
-
+    } elseif ($source === 'mysql') {
+        $server = db_connect(false);
+        $payload['databases'] = array_map(fn ($item) => array_merge($item, ['id' => 'mysql:' . $item['name'], 'engine' => 'mysql']), database_catalog($server));
+    } else $payload['databases'] = workspace_catalog();
     json_response($payload);
 } catch (Throwable $exception) {
     json_response(['ok' => false, 'error' => $exception->getMessage()], 400);

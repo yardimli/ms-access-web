@@ -42,7 +42,7 @@ function getDatabase() {
     if (!databasePromise) {
         databasePromise = fetch('api/database.php', { cache: 'no-store' }).then(response => {
             if (!response.ok) {
-                throw new Error('Unable to load database from MariaDB');
+                throw new Error('Unable to open the selected database. Use File to choose a file or configure your server connection.');
             }
             return response.json();
         });
