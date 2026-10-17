@@ -36,9 +36,14 @@ function positionActiveCellEditor() {
     editor.style.height = isMultipleLookup || activeCellEditor.htmlMode ? 'auto' : `${rect.height}px`;
 }
 
-function normalizeCellValue(value, type) {
+function normalizeCellValue(value, type, column = {}) {
     const text = String(value ?? '').trim();
     if (text === '' || text === '(New)') return '';
+    if (/^(DECIMAL|NUMERIC|FLOAT|DOUBLE)\b/i.test(column.mysqlType || column.actualMysqlType || '')) {
+        const cleaned = text.replace(/[$,]/g, '');
+        if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(cleaned)) throw new Error('Enter a valid number.');
+        return cleaned;
+    }
 
     if (isYesNoColumn(type)) {
         return coerceYesNo(value) ? '1' : '0';
@@ -184,7 +189,8 @@ function closeActiveCellEditor(commit = true) {
 
     if (commit) {
         try {
-            nextValue = normalizeCellValue(nextValue, type);
+            nextValue = normalizeCellValue(nextValue, type, columnDef);
+            window.ExpressionBuilder.validateFields([columnDef], { ...(activeCellEditor.getFields?.() || row || {}), [column]: nextValue });
         } catch (error) {
             showValidationDialog(error.message);
             input.focus();
@@ -264,7 +270,17 @@ function enableEditableCells(container, rows, options = {}) {
                 return false;
             }
 
-            const nextValue = normalizeCellValue(htmlMode ? sanitizeHtmlText(result) : result, type);
+            let nextValue;
+            try {
+                nextValue = normalizeCellValue(htmlMode ? sanitizeHtmlText(result) : result, type, columnDef);
+                window.ExpressionBuilder.validateFields([columnDef], {
+                    ...(isInsertRow ? Object.fromEntries(columnDefs.map(field => [field.name, options.getInsertValue?.(field.name) ?? ''])) : rows[rowIndex]),
+                    [column]: nextValue
+                });
+            } catch (error) {
+                await showValidationDialog(error.message);
+                return false;
+            }
             if (isInsertRow) {
                 options.onInsertEdit?.(column, nextValue);
             } else {
@@ -344,6 +360,9 @@ function enableEditableCells(container, rows, options = {}) {
             rowIndex: isInsertRow ? null : rowIndex,
             column,
             columnDef,
+            getFields: () => isInsertRow
+                ? Object.fromEntries(columnDefs.map(field => [field.name, options.getInsertValue?.(field.name) ?? '']))
+                : rows[rowIndex],
             type,
             originalValue,
             insertRow: isInsertRow,

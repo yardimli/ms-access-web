@@ -112,7 +112,6 @@ final class SQLiteConnection
                 $base = strtolower(preg_replace('/\(.*/', '', $type));
                 $key = $column['pk'] ? 'PRI' : ($keys[$column['name']] ?? '');
                 $default = $column['dflt_value'];
-                if (is_string($default) && str_starts_with($default, "'")) $default = str_replace("''", "'", substr($default, 1, -1));
                 preg_match('/\((\d+)/', $type, $size);
                 $columnInsert->execute([$this->name, $name, $column['name'], $base, $type === 'INTEGER' ? 'INT' : $type, $key, '', ($column['notnull'] || $column['pk']) ? 'NO' : 'YES', $size[1] ?? null, null, $column['cid'] + 1, $default, $column['pk'] && $type === 'INTEGER' ? 'auto_increment' : '']);
                 if ($column['pk']) $indexInsert->execute([$this->name, $name, 'PRIMARY', $column['name'], 0, $column['pk'], 'A']);
@@ -124,7 +123,7 @@ final class SQLiteConnection
     private function columnSql(string $definition): string
     {
         $definition = preg_replace("/\\s+COMMENT\\s+'(?:''|[^'])*'/i", '', $definition);
-        $definition = preg_replace('/\bENUM\s*\([^)]*\)/i', 'TEXT', $definition);
+        $definition = preg_replace("/\\b(?:ENUM|SET)\\s*\\((?:'(?:''|[^'])*'|[^')])*\\)/i", 'TEXT', $definition);
         $definition = preg_replace('/\s+ON UPDATE CURRENT_TIMESTAMP/i', '', $definition);
         if (stripos($definition, 'AUTO_INCREMENT') !== false) {
             $definition = preg_replace('/\b(?:BIGINT|INT|INTEGER)(?:\(\d+\))?/i', 'INTEGER', $definition, 1);

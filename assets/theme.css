@@ -701,6 +701,14 @@ html[data-theme="dark"] .query-grid th {
 }
 
 /* Dialogs and popup surfaces must not inherit their light-mode backgrounds. */
+html[data-theme="dark"] .acaciadb-dialog .dialog-field span {
+    color: var(--acacia-text);
+}
+
+html[data-theme="dark"] .acaciadb-dialog .dialog-help {
+    color: var(--acacia-muted);
+}
+
 html[data-theme="dark"] .dialog-actions,
 html[data-theme="dark"] .expression-builder-dialog,
 html[data-theme="dark"] .expression-builder-actions,
@@ -807,6 +815,21 @@ html[data-theme="dark"] .database-details-button:hover {
     background: #34485a !important;
     border-color: #718ba2 !important;
     color: #f4f7fa !important;
+}
+
+/* Disabled ribbon commands must override active, hover, and icon colors. */
+html[data-theme="dark"] #ribbon :is(button, [role="button"], .fields-checkbox-mini):is(:disabled, .disabled, [aria-disabled="true"]) {
+    color: #8e98a3 !important;
+    background: transparent !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+    filter: grayscale(1);
+    opacity: 0.65;
+    cursor: default;
+}
+
+html[data-theme="dark"] #ribbon :is(button, [role="button"], .fields-checkbox-mini):is(:disabled, .disabled, [aria-disabled="true"]) * {
+    color: inherit !important;
 }
 
 html[data-theme="dark"] .dialog-actions .primary,

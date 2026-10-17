@@ -15,6 +15,10 @@ function normalize_record_value(mixed $value, array $column): mixed
     $text = trim((string) ($value ?? ''));
 
     if ($text === '' || $text === '(New)') {
+        if ($value !== null && $text === '' && !empty($column['allowZeroLength'])
+            && in_array($type, ['Short Text', 'Long Text', 'HTML Text', 'Rich Text', 'Hyperlink'], true)) {
+            return '';
+        }
         if (!empty($column['required']) && $type !== 'AutoNumber') {
             throw new RuntimeException(($column['label'] ?? $column['name']) . ' is required.');
         }
@@ -24,6 +28,12 @@ function normalize_record_value(mixed $value, array $column): mixed
 
     if ($type === 'Yes/No') {
         return in_array(strtolower($text), ['1', 'true', 'yes', 'on'], true) ? '1' : '0';
+    }
+
+    if (preg_match('/^(DECIMAL|NUMERIC|FLOAT|DOUBLE)\b/i', (string) ($column['mysqlType'] ?? $column['actualMysqlType'] ?? ''))) {
+        $cleaned = str_replace(['$', ','], '', $text);
+        if (!is_numeric($cleaned)) throw new RuntimeException(($column['label'] ?? $column['name']) . ' must contain a valid number.');
+        return $cleaned;
     }
 
     if (in_array($type, ['AutoNumber', 'Number', 'Large Number', 'Currency'], true)) {
@@ -361,6 +371,7 @@ try {
 
     foreach ($columns as $column) {
         $name = $column['name'];
+        if (!array_key_exists($name, $row) && ($column['sqlDefaultMode'] ?? 'none') !== 'none') continue;
         $lookup = $column['lookup'] ?? null;
         if (is_array($lookup) && ($lookup['kind'] ?? 'static') === 'table' && ($lookup['mode'] ?? 'single') === 'multiple') {
             $normalizedInsertValues[$name] = implode(',', multiple_lookup_keys($row[$name] ?? ''));

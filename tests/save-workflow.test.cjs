@@ -27,7 +27,7 @@ function context() {
         status: {}, databasePromise: null,
         escapeHtml: value => String(value ?? '')
     });
-    for (const file of ['tables_grid.js', 'app_views.js']) {
+    for (const file of ['expression-functions.js', 'expression-builder.js', 'tables_ribbon.js', 'tables_grid.js', 'app_views.js']) {
         vm.runInContext(fs.readFileSync(path.join(__dirname, '../assets', file), 'utf8'), ctx);
     }
     ctx.showChoiceDialog = async () => 'yes';
@@ -36,6 +36,86 @@ function context() {
     ctx.showMessageDialog = async () => {};
     return { ctx, button, storage };
 }
+
+test('datasheet rename keeps its page, selected cell, scroll, and pending row values', async () => {
+    const source = fs.readFileSync(path.join(__dirname, '../assets/tables_datasheet.js'), 'utf8');
+    const start = source.indexOf('        async function openColumnDialog(');
+    const end = source.indexOf('        async function saveCalculatedField(', start);
+    const original = { old: 'original', id: 42 };
+    const row = { old: 'edited', id: 42 };
+    const ctx = vm.createContext({
+        activeColumnName: 'old', cursorColumnName: 'old', cursorRowIndex: 17,
+        tableName: 'Demo', tableDef: {}, rows: [row], insertDraft: { old: 'draft' },
+        dirtyRows: new Map([['42', { original }]]), sortState: { column: 'old' },
+        pagination: { skip: 500, limit: 500 }, prefs: {}, session: { baseline: '{}' },
+        host: { scrollTop: 420, scrollLeft: 260, focus(options) { assert.equal(options.preventScroll, true); } },
+        columnByName: () => ({}), status: {},
+        showColumnDialog: async options => options.onSubmit({ name: 'renamed', friendlyName: '', comment: '' }),
+        postSchemaAction: async () => ({ payload: { structure: { columns: [{ name: 'renamed' }] }, data: [] } }),
+        savePrefs() {}, renamedColumnPrefs: prefs => prefs, readTablePrefs: () => ({}),
+        renderTable() { ctx.host.scrollTop = 0; ctx.host.scrollLeft = 0; }, updateCellCursor() {}
+    });
+    vm.runInContext(source.slice(start, end), ctx);
+    await ctx.openColumnDialog();
+    assert.equal(ctx.cursorRowIndex, 17);
+    assert.equal(ctx.cursorColumnName, 'renamed');
+    assert.equal(ctx.pagination.skip, 500);
+    assert.equal(ctx.host.scrollTop, 420);
+    assert.equal(ctx.host.scrollLeft, 260);
+    assert.equal(ctx.sortState.column, 'renamed');
+    assert.deepEqual(row, { renamed: 'edited', id: 42 });
+    assert.deepEqual(original, { renamed: 'original', id: 42 });
+    assert.equal(ctx.insertDraft.renamed, 'draft');
+    ctx.showColumnDialog = async () => null;
+    await ctx.openColumnDialog();
+    assert.equal(ctx.host.scrollTop, 420);
+    assert.equal(ctx.cursorRowIndex, 17);
+});
+
+test('renaming a field preserves custom order, width, and sort without changing other preferences', () => {
+    const { ctx } = context();
+    const prefs = { columnOrder: ['c', 'a', 'b'], columnWidths: { a: 240, b: 100 },
+        sortState: { column: 'a', direction: 'asc' }, rowHeight: 30 };
+    const renamed = ctx.renamedColumnPrefs(prefs, 'a', 'renamed');
+    const table = { structure: { columns: ['renamed', 'b', 'c'].map(name => ({ name })) } };
+    assert.deepEqual(Array.from(ctx.orderedTableColumns(table, renamed), column => column.name), ['c', 'renamed', 'b']);
+    assert.equal(renamed.columnWidths.renamed, 240);
+    assert.equal(renamed.columnWidths.a, undefined);
+    assert.equal(renamed.sortState.column, 'renamed');
+    assert.equal(renamed.sortState.direction, 'asc');
+    assert.equal(renamed.rowHeight, 30);
+    assert.equal(prefs.columnOrder[1], 'a');
+    assert.deepEqual(Object.keys(ctx.renamedColumnPrefs({}, 'a', 'renamed')), []);
+});
+
+test('SQL default choices restrict NULL and CURRENT_TIMESTAMP and the value dialog supports cancel', async () => {
+    const { ctx } = context();
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../assets/tables_design_editor.js'), 'utf8'), ctx);
+    const text = ctx.sqlDefaultControl({ type: 'Short Text', mysqlType: 'VARCHAR(255)', required: true });
+    assert.match(text, /value="null"[^>]*disabled/);
+    assert.match(text, /value="current_timestamp"[^>]*disabled/);
+    const timestamp = ctx.sqlDefaultControl({ type: 'Date/Time', mysqlType: 'DATETIME' });
+    assert.doesNotMatch(timestamp, /value="current_timestamp"[^>]*disabled/);
+    let handlers, field;
+    ctx.document.body = { appendChild() {} };
+    ctx.showMovableModal = () => {};
+    ctx.document.createElement = () => {
+        handlers = {};
+        field = { value: '', focus() {} };
+        return { querySelector(selector) {
+            if (selector === 'input') return field;
+            return { addEventListener(event, handler) { handlers[selector] = handler; } };
+        }, addEventListener(event, handler) { handlers[event] = handler; },
+        close() { handlers.close(); }, remove() {} };
+    };
+    const confirmed = ctx.showSqlDefaultDialog();
+    field.value = "O'Brien";
+    handlers.form({ preventDefault() {} });
+    assert.equal(await confirmed, "O'Brien");
+    const cancelled = ctx.showSqlDefaultDialog('existing');
+    handlers['[data-default-cancel]']();
+    assert.equal(await cancelled, null);
+});
 
 test('layout is temporary, saved on close, and isolated by database', async () => {
     const { ctx, storage } = context();
@@ -159,6 +239,68 @@ test('design drag leaves the primary key fixed, stays draft, and saves order onc
     assert.ok(body.innerHTML.indexOf('value="b"') < body.innerHTML.indexOf('value="id"'));
 });
 
+test('design shows SQL labels and Access names and saves calculated value edits', async () => {
+    const { ctx } = context();
+    const handlers = {};
+    const body = { innerHTML: '' };
+    const properties = { innerHTML: '', classList: { toggle() {} } };
+    const view = { dataset: { tableId: 'Demo' }, querySelector: selector => ({
+        '[data-design-body]': body, '[data-field-property-grid]': properties
+    })[selector] || null, querySelectorAll: () => [],
+    addEventListener: (type, handler) => { handlers[type] = handler; } };
+    ctx.content = { querySelectorAll: () => [view] };
+    ctx.ribbon = { querySelector: () => null };
+    const columns = [{ name: 'total', type: 'Calculated Field', calculatedJavascript: 'function(fields) { return 1; }' },
+        { name: 'name', type: 'Short Text' }];
+    const db = { tables: { Demo: { structure: { columns, primaryKey: '' } } } };
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../assets/tables_design_editor.js'), 'utf8'), ctx);
+    ctx.initDesignViews(db);
+    assert.match(body.innerHTML, /value="Short Text"[^>]*>Short Text \(VARCHAR\(255\)\)/);
+    assert.doesNotMatch(body.innerHTML, /data-design-access-type/);
+    assert.doesNotMatch(view.innerHTML, /MS Access Type/);
+    assert.match(properties.innerHTML, /data-field-property="calculatedJavascript"/);
+    assert.doesNotMatch(properties.innerHTML, /data-field-property="(?:inputMask|validationRule|defaultExpression|required)"/);
+    const next = 'function(fields) { return fields.quantity * fields.price; }';
+    handlers.input({ target: { closest: () => null, matches: () => false,
+        dataset: { fieldProperty: 'calculatedJavascript' }, value: next } });
+    let saved;
+    ctx.postSchemaAction = async request => {
+        saved = request.columns[0];
+        return { payload: { structure: { columns: [{ ...columns[0], ...saved }, columns[1]], primaryKey: '' } } };
+    };
+    assert.equal(await ctx.window.acaciadbActiveDesignController.saveDesign({ promptForConfirmation: false }), true);
+    assert.equal(saved.type, 'Calculated Field');
+    assert.equal(saved.calculatedJavascript, next);
+    assert.equal(ctx.mysqlFieldTypeLabel('Currency'), 'DECIMAL(12,2)');
+    assert.equal(ctx.mysqlFieldTypeLabel('Calculated Field'), 'Calculated Field');
+});
+
+test('field size updates the selected VARCHAR label and the saved SQL declaration', async () => {
+    const { ctx } = context();
+    const handlers = {};
+    const body = { innerHTML: '' };
+    const view = { dataset: { tableId: 'Demo' }, querySelector: selector => selector === '[data-design-body]' ? body : null,
+        querySelectorAll: () => [], addEventListener: (type, handler) => { handlers[type] = handler; } };
+    ctx.content = { querySelectorAll: () => [view] };
+    ctx.ribbon = { querySelector: () => null };
+    const columns = [{ name: 'title', type: 'Short Text', mysqlType: 'VARCHAR(255)', fieldSize: 255 }];
+    const db = { tables: { Demo: { structure: { columns, primaryKey: '' } } } };
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../assets/tables_design_editor.js'), 'utf8'), ctx);
+    ctx.initDesignViews(db);
+    handlers.input({ target: { closest: () => null, matches: () => false,
+        dataset: { fieldProperty: 'fieldSize' }, value: '512' } });
+    assert.match(body.innerHTML, /value="Short Text" selected>Short Text \(VARCHAR\(512\)\)/);
+    assert.match(body.innerHTML, /value="sql:BLOB"/);
+    assert.match(body.innerHTML, /value="sql:DECIMAL\(10,2\)"/);
+    let saved;
+    ctx.postSchemaAction = async request => {
+        saved = request.columns[0];
+        return { payload: { structure: { columns: [{ ...columns[0], ...saved }], primaryKey: '' } } };
+    };
+    assert.equal(await ctx.window.acaciadbActiveDesignController.saveDesign({ promptForConfirmation: false }), true);
+    assert.equal(saved.mysqlType, 'VARCHAR(512)');
+});
+
 test('query changes save to the API and a failed save remains dirty', async () => {
     const { ctx } = context();
     const events = {};
@@ -225,7 +367,7 @@ test('form parent and child edits save records while leaving source data untouch
     assert.equal(controller.isDirty(), false);
 });
 
-test('tab switches retain drafts and datasheet switching waits for resolved design changes', async () => {
+test('tab switches retain drafts but clean design views reload the current schema', async () => {
     const { ctx } = context();
     ctx.openTabs = [];
     ctx.currentView = '';
@@ -236,16 +378,25 @@ test('tab switches retain drafts and datasheet switching waits for resolved desi
     for (const name of ['renderDocumentTabs', 'setActiveObject', 'updateContextualRibbon', 'renderStatusViewButtons', 'mergeViewData']) ctx[name] = () => {};
     ctx.getDatabase = async () => ({});
     let fetches = 0;
-    ctx.fetch = async () => { fetches++; return { ok: true, json: async () => ({ ok: true, view: {} }) }; };
+    let sourceFields = ['old_name'];
+    let loadedFields;
+    ctx.mergeViewData = (db, data) => { loadedFields = data.fields; };
+    ctx.fetch = async (url, options) => {
+        assert.equal(options.cache, 'no-store');
+        fetches++;
+        return { ok: true, json: async () => ({ ok: true, view: { data: { fields: [...sourceFields] } } }) };
+    };
     ctx.renderViewTemplate = () => {
         const shell = { dataset: { status: 'Ready' } };
         ctx.content.replaceChildren(shell);
         return shell;
     };
     let closeChecks = 0;
+    let newDesignDirty = true;
     ctx.initCurrentView = async () => {
         if (ctx.currentView === 'design-demo') ctx.window.acaciadbActiveDesignController = {
-            isDirty: () => true, confirmClose: async () => { closeChecks++; return false; }
+            fields: loadedFields,
+            isDirty: () => newDesignDirty, confirmClose: async () => { closeChecks++; return false; }
         };
     };
     await ctx.loadView('design-demo');
@@ -271,7 +422,11 @@ test('tab switches retain drafts and datasheet switching waits for resolved desi
     };
     await ctx.switchTableMode('datasheet');
     assert.equal(ctx.currentView, 'table-demo');
+    sourceFields = ['renamed_field', 'new_field'];
+    newDesignDirty = false;
     await ctx.switchTableMode('design');
-    assert.equal(ctx.window.acaciadbActiveDesignController, draft);
-    assert.equal(draft.isDirty(), false);
+    assert.notEqual(ctx.window.acaciadbActiveDesignController, draft);
+    assert.deepEqual(ctx.window.acaciadbActiveDesignController.fields, ['renamed_field', 'new_field']);
+    assert.equal(ctx.window.acaciadbActiveDesignController.isDirty(), false);
+    assert.equal(fetches, 4);
 });

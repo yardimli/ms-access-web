@@ -129,7 +129,7 @@ $brandAssetVersion = filemtime(__DIR__ . '/assets/acaciadb-icon.png');
     <?php include __DIR__ . '/templates.php'; ?>
     <?php include __DIR__ . '/templates/expression-builder.php'; ?>
     <script src="assets/expression-functions.js"></script>
-    <script src="assets/expression-builder.js"></script>
+    <script src="assets/expression-builder.js?v=<?= filemtime(__DIR__ . '/assets/expression-builder.js') ?>"></script>
     <script src="assets/tables_ribbon.js?v=<?= $tableAssetVersion ?>"></script>
     <script src="assets/tables_grid.js?v=<?= $tableAssetVersion ?>"></script>
     <script src="assets/tables_editing.js?v=<?= $tableAssetVersion ?>"></script>

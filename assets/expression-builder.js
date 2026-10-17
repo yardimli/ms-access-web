@@ -448,6 +448,17 @@
             const categoryButton = event.target.closest('[data-expression-category]');
             if (categoryButton) {
                 selectedCategory = categoryButton.dataset.expressionCategory;
+                if (elementMode === 'table' && allowFieldReferences) {
+                    // Keep the clicked button mounted so the second click is recognized.
+                    categories.querySelectorAll('[data-expression-category]').forEach(button => {
+                        button.classList.toggle('active', button === categoryButton);
+                    });
+                    setDescription(`[${selectedCategory}]`);
+                    if (event.detail === 2) {
+                        insertChoice('<Value>');
+                    }
+                    return;
+                }
                 renderBrowser();
                 return;
             }
@@ -473,7 +484,7 @@
             if (event.target.closest('[data-expression-help], [data-expression-help-button]')) {
                 event.preventDefault();
                 setDescription(allowFieldReferences
-                    ? 'Double-click a value to insert it. Field names are inserted in square brackets.'
+                    ? 'Double-click a field name or value to insert it. Field names are inserted in square brackets.'
                     : 'Double-click a function, constant, or operator to insert it. This expression cannot reference table fields.');
                 return;
             }
@@ -588,6 +599,25 @@
 
     window.ExpressionBuilder = {
         open: openExpressionBuilder,
-        validate: validateExpression
+        validate: validateExpression,
+        compile: compileJavascriptFunction,
+        validateFields(columns, fields) {
+            for (const column of columns) {
+                const value = fields[column.name];
+                const empty = value == null || (typeof value === 'string' && value.trim() === '');
+                if (empty && (!column.required || column.allowZeroLength === true)) continue;
+                const source = String(column.validationJavascript || '').trim();
+                if (!source) continue;
+                const label = column.label || column.name;
+                let valid;
+                try {
+                    valid = compileJavascriptFunction(source)({ ...fields });
+                    if (typeof valid !== 'boolean') throw new Error('The rule must return true or false.');
+                } catch (error) {
+                    throw new Error(`Cannot validate ${label}: ${error.message}`);
+                }
+                if (!valid) throw new Error(column.validationText || `${label} does not satisfy its validation rule.`);
+            }
+        }
     };
 }());

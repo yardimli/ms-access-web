@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/schema_options.php';
 
 function acaciadb_slug(string $name): string
 {
@@ -40,22 +41,8 @@ function default_acaciadb_format(string $acaciadbType): string
 
 function canonical_mysql_type(string $dataType, string $columnType): string
 {
-    $dataType = strtolower($dataType);
-    $columnType = strtoupper($columnType);
-
-    return match ($dataType) {
-        'tinyint' => str_contains($columnType, 'TINYINT(1)') ? 'TINYINT(1)' : 'INT',
-        'int', 'integer', 'smallint', 'mediumint' => 'INT',
-        'bigint' => 'BIGINT',
-        'decimal', 'numeric' => 'DECIMAL(12,2)',
-        'varchar', 'char' => $columnType,
-        'text', 'mediumtext', 'longtext' => 'TEXT',
-        'date' => 'DATE',
-        'time' => 'TIME',
-        'timestamp' => 'TIMESTAMP',
-        'datetime' => 'DATETIME',
-        default => $columnType,
-    };
+    // Preserve precision, length, unsigned attributes, and case-sensitive ENUM members.
+    return preg_replace_callback('/^[a-z]+/i', fn ($match) => strtoupper($match[0]), trim($columnType));
 }
 
 function label_from_column(string $name): string
@@ -388,7 +375,7 @@ function fetch_table_columns(mysqli|SQLiteConnection $db, string $tableName): ar
     $columnMetadata = $metadata['columns'] ?? [];
     $stmt = $db->prepare(
         'SELECT column_name, data_type, column_type, column_key, column_comment, is_nullable,
-                character_maximum_length, numeric_precision
+                character_maximum_length, numeric_precision, column_default, extra' . ($db instanceof SQLiteConnection ? '' : ', collation_name, character_set_name') . '
          FROM information_schema.columns
          WHERE table_schema = DATABASE()
            AND table_name = ?
@@ -409,7 +396,17 @@ function fetch_table_columns(mysqli|SQLiteConnection $db, string $tableName): ar
         $friendlyName = trim((string) ($columnMetadata[$row['column_name']]['friendlyName'] ?? ''));
         $fieldSize = $row['character_maximum_length'] ?: $row['numeric_precision'];
         $mysqlType = canonical_mysql_type($row['data_type'], $row['column_type']);
+        $defaultDetails = sql_default_details($row['column_default'], (string) $row['extra']);
+        if ($row['column_default'] === null && ($columnDefinition['sqlDefaultMode'] ?? '') === 'null') $defaultDetails['sqlDefaultMode'] = 'null';
+        if (($columnDefinition['sqlDefaultMode'] ?? '') === 'defined'
+            && (string) ($columnDefinition['sqlDefaultValue'] ?? '') === (string) $row['column_default']) {
+            $defaultDetails = ['sqlDefaultMode' => 'defined', 'sqlDefaultValue' => $row['column_default']];
+        }
         $columns[] = [
+            ...$defaultDetails,
+            'collation' => (string) ($row['collation_name'] ?? $columnDefinition['collation'] ?? ''),
+            'sqlAttribute' => stripos((string) $row['extra'], 'on update') !== false ? 'ON UPDATE CURRENT_TIMESTAMP'
+                : (stripos($mysqlType, 'zerofill') !== false ? 'UNSIGNED ZEROFILL' : (stripos($mysqlType, 'unsigned') !== false ? 'UNSIGNED' : (str_ends_with((string) ($row['collation_name'] ?? ''), '_bin') ? 'BINARY' : ''))),
             'name' => $row['column_name'],
             'label' => $friendlyName !== '' ? $friendlyName : $row['column_name'],
             'friendlyName' => $friendlyName,
@@ -426,6 +423,9 @@ function fetch_table_columns(mysqli|SQLiteConnection $db, string $tableName): ar
             'calculatedInterpretNatural' => (bool) ($columnMetadata[$row['column_name']]['calculatedInterpretNatural'] ?? false),
             'validationRule' => (string) ($columnMetadata[$row['column_name']]['validationRule'] ?? ''),
             'validationJavascript' => (string) ($columnMetadata[$row['column_name']]['validationJavascript'] ?? ''),
+            'validationText' => (string) ($columnMetadata[$row['column_name']]['validationText'] ?? ''),
+            'allowZeroLength' => in_array($acaciadbType, ['Short Text', 'Long Text', 'HTML Text', 'Rich Text', 'Hyperlink'], true)
+                && (bool) ($columnMetadata[$row['column_name']]['allowZeroLength'] ?? true),
             'validationInterpretNatural' => (bool) ($columnMetadata[$row['column_name']]['validationInterpretNatural'] ?? false),
             'comment' => $columnDefinition['comment'] ?? $row['column_comment'] ?? '',
             'inputMask' => $columnDefinition['inputMask'] ?? '',
@@ -434,7 +434,7 @@ function fetch_table_columns(mysqli|SQLiteConnection $db, string $tableName): ar
             'inputMaskStoreSymbols' => $columnDefinition['inputMaskStoreSymbols'] ?? true,
             'type' => $acaciadbType,
             'inferredAcaciaDBType' => $inferredAcaciaDBType,
-            'mysqlType' => (string) ($columnMetadata[$row['column_name']]['mysqlType'] ?? $mysqlType),
+            'mysqlType' => $db instanceof SQLiteConnection ? (string) ($columnMetadata[$row['column_name']]['mysqlType'] ?? $mysqlType) : $mysqlType,
             'actualMysqlType' => $mysqlType,
             'fieldSize' => $fieldSize ? (int) $fieldSize : null,
             'primaryKey' => $row['column_key'] === 'PRI',
@@ -595,6 +595,7 @@ function fetch_table_payload(mysqli|SQLiteConnection $db, string $tableName, boo
             'tableProperties' => (array) (fetch_table_metadata($db, $tableName)['tableProperties'] ?? []),
         ],
     ];
+    if (!$includeRows) $payload['structure']['schemaOptions'] = database_schema_options($db);
 
     if ($includeRows) {
         [$skip, $limit] = normalize_table_page($skip, $limit);

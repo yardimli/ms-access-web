@@ -163,7 +163,8 @@
     white-space: nowrap;
 }
 
-.fields-format-controls select {
+.fields-format-controls select,
+.fields-format-controls input {
     width: 100%;
     min-width: 0;
     max-width: 100%;
@@ -1794,10 +1795,13 @@ dialog {
 .property-builder-control input[readonly] { min-width: 0; overflow: hidden; background: #f8f8f8; text-overflow: ellipsis; white-space: nowrap; cursor: default; }
 .property-builder-control button { display: grid; width: 22px; height: 19px; place-items: center; border-left: 1px solid #9aa3ad; background: linear-gradient(#fff, #e2e5e8); color: #25313d; font-size: 11px; }
 .property-builder-control button:hover { background: #dbeaf7; }
-.design-grid { width: 100%; min-width: 760px; table-layout: fixed; }
-.design-grid th:nth-child(2) { width: 28%; }
-.design-grid th:nth-child(3) { width: 22%; }
-.design-grid th:nth-child(4) { width: auto; }
+.design-grid { width: 100%; min-width: 1100px; table-layout: fixed; }
+.design-grid th:nth-child(2) { width: 18%; }
+.design-grid th:nth-child(3) { width: 24%; }
+.design-grid th:nth-child(4) { width: 19%; }
+.design-grid th:nth-child(5) { width: 17%; }
+.design-grid th:nth-child(6) { width: auto; }
+.design-grid td > select { width: 100%; min-width: 0; background: transparent; }
 .design-cell-input,
 .design-type-cell select { display: block; width: 100%; height: 25px; border: 0; background: transparent; padding: 2px 5px; outline: 0; }
 .design-cell-input:focus,

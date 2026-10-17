@@ -6,6 +6,11 @@ const designFieldTypes = [
 const designLookupTypes = new Set(['Short Text', 'Number']);
 
 const designPropertyHelp = {
+    sqlDefaultMode: 'None removes the SQL default. As defined stores a literal value. NULL requires an optional field. CURRENT_TIMESTAMP uses the database clock for TIMESTAMP or DATETIME fields.',
+    collation: 'Controls text comparison and sorting. Choices are loaded from this database connection.',
+    sqlAttribute: 'MySQL numeric and automatic timestamp attributes. Available choices depend on the field type.',
+    mysqlType: "SQL storage type, such as VARCHAR(512), DECIMAL(4,4), BLOB or ENUM('small','large'). Precision is total digits; scale is digits after the decimal point. Availability depends on the database engine and version.",
+    calculatedJavascript: 'The JavaScript function that calculates this field from the record. Edit it directly or use the Expression Builder.',
     fieldSize: 'The maximum size of data that can be stored in this field. For Short Text fields, enter the maximum number of characters.',
     newValues: 'Determines how values are generated for an AutoNumber field. Increment creates sequential values for new records.',
     format: 'The display layout for the field. Select a predefined format or enter a custom format. The stored value is not changed.',
@@ -39,6 +44,33 @@ const designPropertyHelp = {
 
 function cloneDesignValue(value) {
     return JSON.parse(JSON.stringify(value ?? null));
+}
+
+function showSqlDefaultDialog(value = '') {
+    return new Promise(resolve => {
+        const dialog = document.createElement('dialog');
+        dialog.className = 'acaciadb-dialog';
+        dialog.innerHTML = `<form method="dialog"><div class="acaciadb-dialog-title">Default Value</div><div class="acaciadb-dialog-body">
+            <label class="dialog-field"><span>As defined:</span><input name="defaultValue" value="${escapeHtml(value)}" autocomplete="off"></label>
+            <p class="dialog-help">Enter a literal value without SQL quotes. Leave empty for an empty-string default.</p></div>
+            <div class="dialog-actions"><button type="button" data-default-cancel>Cancel</button><button type="submit" class="primary">OK</button></div></form>`;
+        let result = null;
+        document.body.appendChild(dialog);
+        dialog.querySelector('[data-default-cancel]').addEventListener('click', () => dialog.close());
+        dialog.querySelector('form').addEventListener('submit', event => {
+            event.preventDefault(); result = dialog.querySelector('input').value; dialog.close();
+        });
+        dialog.addEventListener('close', () => { dialog.remove(); resolve(result); }, { once: true });
+        showMovableModal(dialog);
+        dialog.querySelector('input').focus();
+    });
+}
+function sqlDefaultControl(column) {
+    const mode = column.sqlDefaultMode || 'none';
+    return `<div class="property-builder-control"><select data-field-property="sqlDefaultMode" aria-label="Default value">
+        ${[['none', 'None'], ['defined', 'As defined:'], ['null', 'NULL'], ['current_timestamp', 'CURRENT_TIMESTAMP']].map(([value, label]) =>
+            `<option value="${value}" ${mode === value ? 'selected' : ''} ${(value === 'null' && column.required) || (value === 'current_timestamp' && !/^(TIMESTAMP|DATETIME)\b/i.test(columnSqlType(column))) ? 'disabled' : ''}>${label}</option>`).join('')}
+        </select>${mode === 'defined' ? `<button type="button" data-field-builder="sql-default" title="${escapeHtml(column.sqlDefaultValue || '(empty string)')}" aria-label="Edit default value">…</button>` : ''}</div>`;
 }
 
 function designBaseType(column) {
@@ -75,6 +107,7 @@ function initDesignViews(db) {
 
         const tableName = view.dataset.tableId;
         const tableDef = db.tables[tableName];
+        const schemaOptions = tableDef?.structure?.schemaOptions || { engine: '', collations: [] };
         const sourceColumns = tableDef?.structure?.columns || [];
         const columns = sourceColumns.map((column, index) => ({
             ...cloneDesignValue(column), type: designBaseType(column), originalName: column.name,
@@ -107,6 +140,13 @@ function initDesignViews(db) {
 
         function generalProperties(column) {
             if (!column) return [];
+            if (column.type === 'Calculated Field' || column.calculatedJavascript) {
+                return [
+                    ['Calculated Value', 'calculatedJavascript', column.calculatedJavascript || '', 'calculatedBuilder'],
+                    ['Caption', 'friendlyName', column.friendlyName || '', 'text'],
+                    ['Description', 'comment', column.comment || '', 'text']
+                ];
+            }
             if (column.type === 'AutoNumber') {
                 return [
                     ['Field Size', 'fieldSize', 'Long Integer', 'text', true],
@@ -117,13 +157,16 @@ function initDesignViews(db) {
                     ['Text Align', 'textAlign', 'General', 'select', false, ['General', 'Left', 'Center', 'Right']]
                 ];
             }
-            const rows = [['Field Size', 'fieldSize', fieldSizeFor(column), 'text', column.type !== 'Short Text']];
+            const rows = [
+                ['SQL Type', 'mysqlType', columnSqlType(column), 'text', Boolean(column.lookup)],
+                ['Field Size', 'fieldSize', fieldSizeFor(column), 'text', !/^(?:VAR)?(?:CHAR|BINARY)\(/i.test(columnSqlType(column))]
+            ];
             if (['Number', 'Currency', 'Date/Time'].includes(column.type)) rows.push(['Format', 'acaciadbFormat', column.acaciadbFormat || '', 'text']);
             if (column.type === 'Number') rows.push(['Decimal Places', 'decimalPlaces', column.decimalPlaces ?? 'Auto', 'text']);
             rows.push(
                 ['Input Mask', 'inputMask', column.inputMask || '', 'inputMaskBuilder'],
                 ['Caption', 'friendlyName', column.friendlyName || '', 'text'],
-                ['Default Value', 'defaultExpression', column.defaultExpression || '', 'text'],
+                ['Default Value', 'sqlDefaultMode', column.sqlDefaultMode || 'none', 'sqlDefault'],
                 ['Validation Rule', 'validationRule', column.validationJavascript || '', 'validationBuilder'],
                 ['Validation Text', 'validationText', column.validationText || '', 'text'],
                 ['Required', 'required', column.required ? 'Yes' : 'No', 'select', false, ['No', 'Yes']],
@@ -161,7 +204,9 @@ function initDesignViews(db) {
         }
 
         function propertyControl(key, value, kind, disabled, options = []) {
+            if (kind === 'sqlDefault') return sqlDefaultControl(selectedColumn());
             const common = `data-field-property="${escapeHtml(key)}" ${disabled ? 'disabled' : ''}`;
+            if (kind === 'calculatedBuilder') return `<div class="property-builder-control"><input type="text" value="${escapeHtml(value)}" ${common} spellcheck="false"><button type="button" data-field-builder="calculated" title="Edit calculated expression" aria-label="Edit calculated expression"><i class="fas fa-ellipsis-h"></i></button></div>`;
             if (kind === 'select') return `<select ${common}>${options.map(option => `<option ${String(option) === String(value) ? 'selected' : ''}>${escapeHtml(option)}</option>`).join('')}</select>`;
             if (kind === 'validationBuilder' || kind === 'inputMaskBuilder') {
                 const builder = kind === 'validationBuilder' ? 'validation' : 'input-mask';
@@ -194,6 +239,22 @@ function initDesignViews(db) {
             column.validationInterpretNatural = Boolean(result.interpretNatural);
             renderFieldProperties();
             status.textContent = `Validation rule updated for ${column.name}`;
+        }
+
+        async function openCalculatedValueBuilder() {
+            const column = selectedColumn();
+            if (!column || !window.ExpressionBuilder?.open) return;
+            const result = await window.ExpressionBuilder.open({
+                tableName, fieldName: column.name, purpose: 'calculated',
+                expression: column.calculatedExpression || '', javascript: column.calculatedJavascript || '',
+                interpretNatural: Boolean(column.calculatedInterpretNatural),
+                columns: visibleColumns().map(field => ({ name: field.name, type: field.type }))
+            });
+            if (!result) return;
+            column.calculatedExpression = result.expression;
+            column.calculatedJavascript = result.javascript;
+            column.calculatedInterpretNatural = Boolean(result.interpretNatural);
+            renderFieldProperties();
         }
 
         async function openInputMaskWizard() {
@@ -294,10 +355,14 @@ function initDesignViews(db) {
                 return `<tr class="${index === selectedIndex ? 'editing' : ''}" data-design-row="${index}">
                     <td class="row-head" draggable="${!column.primaryKey}" title="${column.primaryKey ? 'Primary key position is fixed' : 'Drag to reorder field'}" data-design-row-head="${index}">${column.primaryKey ? '<i class="fas fa-key"></i>' : index === selectedIndex ? '<i class="fas fa-caret-right"></i>' : ''}</td>
                     <td><input class="design-cell-input" data-design-name value="${escapeHtml(column.name)}" ${column.primaryKey ? 'disabled' : ''}></td>
-                    <td class="design-type-cell"><select data-design-type ${column.primaryKey || column.lookup || column.calculatedJavascript ? 'disabled' : ''}>${designFieldTypes.map(type => `<option ${type === column.type ? 'selected' : ''}>${escapeHtml(type)}</option>`).join('')}</select></td>
+                    <td class="design-type-cell"><select data-design-type ${column.primaryKey || column.lookup || column.calculatedJavascript ? 'disabled' : ''}>${mysqlTypeOptions(designFieldTypes, column)}</select></td>
+                    <td><select data-field-property="collation" aria-label="Collation for ${escapeHtml(column.name)}" ${column.lookup || column.type === 'Calculated Field' || !/^(CHAR|VARCHAR|TINYTEXT|TEXT|MEDIUMTEXT|LONGTEXT|ENUM|SET)\b/i.test(columnSqlType(column)) ? 'disabled' : ''}>
+                        <option value="">Default</option>${schemaOptions.collations.map(item => `<option value="${escapeHtml(item.name)}" ${item.name === column.collation ? 'selected' : ''}>${escapeHtml(item.name)}</option>`).join('')}</select></td>
+                    <td><select data-field-property="sqlAttribute" aria-label="Attributes for ${escapeHtml(column.name)}" ${schemaOptions.engine !== 'mysql' || column.lookup || column.type === 'Calculated Field' ? 'disabled' : ''}>
+                        ${['', ...(/^(CHAR|VARCHAR|TINYTEXT|TEXT|MEDIUMTEXT|LONGTEXT|ENUM|SET)\b/i.test(columnSqlType(column)) ? ['BINARY'] : []), ...(/^(TINYINT|SMALLINT|MEDIUMINT|INT|INTEGER|BIGINT|DECIMAL|NUMERIC|FLOAT|DOUBLE)\b/i.test(columnSqlType(column)) ? ['UNSIGNED', 'UNSIGNED ZEROFILL'] : []), ...(/^(TIMESTAMP|DATETIME)\b/i.test(columnSqlType(column)) ? ['ON UPDATE CURRENT_TIMESTAMP'] : [])].map(value => `<option value="${value}" ${value === (column.sqlAttribute || '') ? 'selected' : ''}>${value || 'None'}</option>`).join('')}</select></td>
                     <td><input class="design-cell-input" data-design-comment value="${escapeHtml(column.comment || '')}"></td>
                 </tr>`;
-            }).join('') + Array.from({ length: Math.max(3, 8 - visibleColumns().length) }, () => '<tr data-empty-design-row><td class="row-head"></td><td></td><td></td><td></td></tr>').join('');
+            }).join('') + Array.from({ length: Math.max(3, 8 - visibleColumns().length) }, () => '<tr data-empty-design-row><td class="row-head"></td><td></td><td></td><td></td><td></td><td></td></tr>').join('');
         }
 
         function selectDesignRow(index) {
@@ -496,6 +561,14 @@ function initDesignViews(db) {
                 inputMask: column.inputMask || '', inputMaskName: column.inputMaskName || '', inputMaskPlaceholder: column.inputMaskPlaceholder ?? '_',
                 inputMaskStoreSymbols: column.inputMaskStoreSymbols !== false, validationRule: column.validationRule || '',
                 validationJavascript: column.validationJavascript || '', validationInterpretNatural: Boolean(column.validationInterpretNatural),
+                validationText: column.validationText || '',
+                allowZeroLength: column.allowZeroLength !== false,
+                mysqlType: columnSqlType(column).replace(/ AUTO_INCREMENT$/, ''), fieldSize: column.fieldSize,
+                ...(column.collationEdited ? { collation: column.collation || '' } : {}),
+                ...(column.attributeEdited ? { sqlAttribute: column.sqlAttribute || '' } : {}),
+                ...(column.sqlDefaultEdited ? { sqlDefaultMode: column.sqlDefaultMode || 'none', sqlDefaultValue: column.sqlDefaultValue ?? '' } : {}),
+                calculatedExpression: column.calculatedExpression || '', calculatedJavascript: column.calculatedJavascript || '',
+                calculatedInterpretNatural: Boolean(column.calculatedInterpretNatural),
                 isNew: Boolean(column.isNew), deleted: Boolean(column.deleted)
             }));
         }
@@ -506,6 +579,14 @@ function initDesignViews(db) {
         async function saveDesign({ promptForConfirmation = true } = {}) {
             const changes = designChanges();
             if (!isDirty()) return true;
+            try {
+                for (const column of visibleColumns().filter(column => column.type === 'Calculated Field')) {
+                    window.ExpressionBuilder.compile(column.calculatedJavascript);
+                }
+            } catch (error) {
+                await showMessageDialog({ title: 'Calculated Value Error', message: error.message, confirmText: 'Edit' });
+                return false;
+            }
             const invalid = visibleColumns().find(column => !/^[^\x00-\x1F]{1,64}$/u.test(column.name));
             if (invalid) {
                 await showMessageDialog({ title: 'Invalid Field Name', message: `${invalid.name} is not a valid SQL field name.`, confirmText: 'OK' });
@@ -604,7 +685,7 @@ function initDesignViews(db) {
         }
 
         view.innerHTML = `<div class="table-design-layout"><div class="table-design-main"><div class="table-design-grid-wrap">
-            <table class="acaciadb-grid design-grid"><thead><tr><th class="row-head"></th><th>Field Name</th><th>Data Type</th><th>Description (Optional)</th></tr></thead><tbody data-design-body></tbody></table>
+            <table class="acaciadb-grid design-grid"><thead><tr><th class="row-head"></th><th>Field Name</th><th>Data Type</th><th>Collation</th><th>Attributes</th><th>Description (Optional)</th></tr></thead><tbody data-design-body></tbody></table>
             </div><section class="field-properties"><div class="field-properties-title">Field Properties</div><div class="field-properties-body"><div class="field-properties-editor">
             <div class="field-tabs"><button type="button" class="active" data-field-tab="general">General</button><button type="button" data-field-tab="lookup">Lookup</button></div><div class="property-grid" data-field-property-grid></div>
             </div><p class="field-property-help" data-field-property-help></p></div></section></div>
@@ -616,12 +697,18 @@ function initDesignViews(db) {
         renderPropertySheet();
         updateDesignRibbonState();
 
-        view.addEventListener('click', event => {
+        view.addEventListener('click', async event => {
             const row = event.target.closest('[data-design-row]');
             if (row) selectDesignRow(Number(row.dataset.designRow));
             const builder = event.target.closest('[data-field-builder]');
             if (builder?.dataset.fieldBuilder === 'validation') void openValidationRuleBuilder();
             if (builder?.dataset.fieldBuilder === 'input-mask') void openInputMaskWizard();
+            if (builder?.dataset.fieldBuilder === 'calculated') void openCalculatedValueBuilder();
+            if (builder?.dataset.fieldBuilder === 'sql-default') {
+                const column = selectedColumn();
+                const value = await showSqlDefaultDialog(column.sqlDefaultValue ?? '');
+                if (value !== null) { column.sqlDefaultValue = value; column.sqlDefaultEdited = true; renderFieldProperties(); }
+            }
             const tab = event.target.closest('[data-field-tab]');
             if (tab && !tab.disabled) { activeFieldTab = tab.dataset.fieldTab; renderFieldProperties(); }
             if (event.target.closest('.property-close')) togglePropertySheet(false);
@@ -640,9 +727,14 @@ function initDesignViews(db) {
             if (event.target.matches('[data-design-name]')) column.name = event.target.value.trim();
             if (event.target.matches('[data-design-comment]')) column.comment = event.target.value;
             const key = event.target.dataset.fieldProperty;
+            if (key === 'sqlDefaultMode') return;
             if (key && column) {
                 const value = event.target.value;
+                if (key === 'collation') column.collationEdited = true;
+                if (key === 'sqlAttribute') column.attributeEdited = true;
+                if (key === 'calculatedJavascript') { column.calculatedExpression = ''; column.calculatedInterpretNatural = false; }
                 if (key === 'required') column.required = value === 'Yes';
+                else if (key === 'allowZeroLength') column.allowZeroLength = value === 'Yes';
                 else if (key === 'indexed') { column.indexed = value !== 'No'; column.unique = value === 'Yes (No Duplicates)'; }
                 else if (['displayControl', 'rowSourceType', 'rowSource', 'boundColumn', 'columnCount', 'columnHeads', 'columnWidths', 'listRows', 'listWidth', 'limitToList', 'allowMultiple', 'allowValueListEdits', 'listItemsEditForm', 'showOnlyRowSourceValues'].includes(key)) {
                     if (key === 'displayControl' && value === 'Text Box') {
@@ -672,17 +764,51 @@ function initDesignViews(db) {
                     if (key === 'displayControl') renderFieldProperties();
                     updateDesignRibbonState();
                 } else column[key] = value;
+                if (key === 'fieldSize' && /^(?:VAR)?(?:CHAR|BINARY)\(/i.test(columnSqlType(column))) {
+                    column.mysqlType = columnSqlType(column).replace(/\(\d+\)/, `(${value})`);
+                    const sqlInput = view.querySelector('[data-field-property="mysqlType"]');
+                    if (sqlInput) sqlInput.value = column.mysqlType;
+                    renderRows();
+                }
+                if (key === 'mysqlType') {
+                    column.type = accessTypeForSql(value);
+                    const size = value.match(/^(?:VAR)?(?:CHAR|BINARY)\((\d+)\)/i);
+                    if (size) {
+                        column.fieldSize = Number(size[1]);
+                        const sizeInput = view.querySelector('[data-field-property="fieldSize"]');
+                        if (sizeInput) sizeInput.value = column.fieldSize;
+                    }
+                    renderRows();
+                }
             }
             const tableKey = event.target.dataset.tableProperty;
             if (tableKey) tableProperties[tableKey] = event.target.value;
         });
 
-        view.addEventListener('change', event => {
+        view.addEventListener('change', async event => {
+            if (event.target.dataset.fieldProperty === 'sqlDefaultMode') {
+                const column = selectedColumn();
+                const mode = event.target.value;
+                if (mode === 'defined') {
+                    const value = await showSqlDefaultDialog(column.sqlDefaultValue ?? '');
+                    if (value === null) { renderFieldProperties(); return; }
+                    column.sqlDefaultValue = value;
+                }
+                column.sqlDefaultMode = mode;
+                column.sqlDefaultEdited = true;
+                renderFieldProperties();
+                return;
+            }
             const typeSelect = event.target.closest('[data-design-type]');
             if (!typeSelect) return;
             const column = columns[Number(typeSelect.closest('[data-design-row]').dataset.designRow)];
-            column.type = typeSelect.value;
+            const native = typeSelect.value.startsWith('sql:');
+            column.type = native ? accessTypeForSql(typeSelect.value.slice(4)) : typeSelect.value;
+            column.mysqlType = native ? typeSelect.value.slice(4) : mysqlFieldTypeLabel(column.type).replace(/ \(.+\)$/, '');
+            const size = column.mysqlType.match(/^(?:VAR)?(?:CHAR|BINARY)\((\d+)\)/i);
+            column.fieldSize = size ? Number(size[1]) : null;
             if (!designLookupTypes.has(column.type)) column.lookup = null;
+            renderRows();
             renderFieldProperties();
         });
 

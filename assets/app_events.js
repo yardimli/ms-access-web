@@ -227,7 +227,9 @@ document.addEventListener('click', async event => {
             return;
         }
 
-        status.textContent = 'Field Validation Message selected';
+        if (item === 'message') {
+            await window.acaciadbActiveTableController?.editValidationMessage?.();
+        }
         return;
     }
 
@@ -307,6 +309,14 @@ document.addEventListener('click', async event => {
 });
 
 document.addEventListener('change', async event => {
+    const sizeInput = event.target.closest('[data-field-size-input]');
+    if (sizeInput && isTableDatasheetView(currentView)) {
+        const column = window.acaciadbActiveTableColumn;
+        if (column && supportsFieldSize(column)) {
+            const sqlType = columnSqlType(column).replace(/\(\d+\)/, `(${sizeInput.value.trim()})`);
+            await window.acaciadbActiveTableController?.changeColumnType?.(column.type, sqlType);
+        }
+    }
     const typeSelect = event.target.closest('[data-field-data-type]');
     if (typeSelect && isTableDatasheetView(currentView)) {
         await window.acaciadbActiveTableController?.changeColumnType?.(typeSelect.value);

@@ -360,7 +360,14 @@ async function loadView(view, options = {}) {
     persistWorkspaceState();
     content.innerHTML = '<div class="p-6 text-neutral-500">Loading...</div>';
     renderDocumentTabs();
-    const cached = findOpenObjectTab(view)?.editors?.[view];
+    const targetTab = findOpenObjectTab(view);
+    let cached = targetTab?.editors?.[view];
+    // Clean table designs must reflect schema edits made in the datasheet or elsewhere.
+    // Only unsaved design drafts should reuse their editor and snapshot.
+    if (cached && isTableDesignView(view) && !cached.design?.isDirty?.()) {
+        delete targetTab.editors[view];
+        cached = null;
+    }
     if (cached) {
         content.replaceChildren(...cached.nodes);
         window.acaciadbActiveDesignController = cached.design;
@@ -373,6 +380,7 @@ async function loadView(view, options = {}) {
         return;
     }
     const response = await fetch(`api/view.php?view=${encodeURIComponent(view)}`, {
+        cache: 'no-store',
         headers: { 'X-Requested-With': 'XMLHttpRequest' }
     });
 

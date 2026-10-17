@@ -12,9 +12,59 @@ const tableDataTypes = [
     'Hyperlink',
     'Attachment',
     'Lookup & Relationship',
-    'Calculated',
+    'Calculated Field',
     'Lookup Wizard...'
 ];
+
+const mysqlNativeTypes = ['CHAR(1)', 'VARCHAR(255)', 'BINARY(1)', 'VARBINARY(255)',
+    'TINYTEXT', 'TEXT', 'MEDIUMTEXT', 'LONGTEXT', 'TINYBLOB', 'BLOB', 'MEDIUMBLOB', 'LONGBLOB',
+    'TINYINT', 'SMALLINT', 'MEDIUMINT', 'INT', 'BIGINT', 'DECIMAL(10,2)', 'FLOAT', 'DOUBLE', 'BIT(1)', 'BOOLEAN',
+    'DATE', 'TIME', 'DATETIME', 'TIMESTAMP', 'YEAR', "ENUM('value')", "SET('value')", 'JSON',
+    'GEOMETRY', 'POINT', 'LINESTRING', 'POLYGON', 'MULTIPOINT', 'MULTILINESTRING', 'MULTIPOLYGON', 'GEOMETRYCOLLECTION', 'VECTOR(3)'];
+
+function accessTypeForSql(type) {
+    const base = String(type).toUpperCase().split(/[\s(]/)[0];
+    if (/BLOB|BINARY|GEOMETRY|POINT|LINESTRING|POLYGON|VECTOR/.test(base)) return 'OLE Object';
+    if (/TEXT|JSON/.test(base)) return 'Long Text';
+    if (['DATE', 'TIME', 'DATETIME', 'TIMESTAMP'].includes(base)) return 'Date/Time';
+    if (base === 'BOOLEAN') return 'Yes/No';
+    if (base === 'BIGINT') return 'Large Number';
+    if (['TINYINT', 'SMALLINT', 'MEDIUMINT', 'INT', 'DECIMAL', 'NUMERIC', 'FLOAT', 'DOUBLE', 'BIT', 'YEAR'].includes(base)) return 'Number';
+    return 'Short Text';
+}
+
+function columnSqlType(column) {
+    return column.mysqlType || column.actualMysqlType || mysqlFieldTypeLabel(column.type || 'Short Text').replace(/ \(.+\)$/, '');
+}
+
+function mysqlTypeOptions(types, column = {}) {
+    return types.map(type => {
+        const active = type === column.type;
+        const sqlType = active && !['AutoNumber', 'Calculated Field', 'Lookup & Relationship'].includes(type)
+            ? columnSqlType(column) : mysqlFieldTypeLabel(type);
+        const label = fieldTypeDisplayLabel(type, sqlType);
+        return `<option value="${escapeHtml(type)}" ${active ? 'selected' : ''}>${escapeHtml(label)}</option>`;
+    }).join('') + `<optgroup label="MySQL types">${mysqlNativeTypes.map(type => `<option value="sql:${escapeHtml(type)}">${escapeHtml(type)}</option>`).join('')}</optgroup>`;
+}
+
+function fieldTypeDisplayLabel(type, sqlType = mysqlFieldTypeLabel(type)) {
+    if (type === 'Calculated Field' || type === 'Calculated') return 'Calculated Field';
+    if (sqlType === type) return type;
+    return `${type} (${sqlType.replace(/ \((?:HTML|Rich Text|Hyperlink|Attachment|OLE Object|Lookup)\)$/, '')})`;
+}
+
+// Keep the existing semantic values for schema requests; show their SQL storage types.
+function mysqlFieldTypeLabel(type) {
+    return ({
+        'Short Text': 'VARCHAR(255)', 'Long Text': 'TEXT', 'HTML Text': 'TEXT (HTML)',
+        'Rich Text': 'TEXT (Rich Text)', Number: 'INT', 'Large Number': 'BIGINT',
+        'Date/Time': 'DATETIME', 'Date & Time': 'DATETIME', Currency: 'DECIMAL(12,2)',
+        AutoNumber: 'INT AUTO_INCREMENT', 'Yes/No': 'TINYINT(1)',
+        Hyperlink: 'VARCHAR(255) (Hyperlink)', Attachment: 'VARCHAR(255) (Attachment)',
+        'OLE Object': 'VARCHAR(255) (OLE Object)',
+        'Lookup & Relationship': 'VARCHAR / INT (Lookup)', Calculated: 'Calculated Field'
+    })[type] || type;
+}
 
 const fieldFormatOptions = {
     Number: ['General Number', 'Currency', 'Euro', 'Fixed', 'Standard', 'Percent', 'Scientific'],
@@ -117,7 +167,7 @@ function renderFieldsRibbon() {
 
             <div class="fields-group fields-formatting" data-label="Formatting">
                 <div class="fields-format-controls">
-                    <label><span>Data Type:</span><select data-field-data-type>${tableDataTypes.filter(type => !['Calculated', 'Lookup Wizard...'].includes(type)).map(type => `<option>${escapeHtml(type)}</option>`).join('')}</select></label>
+                    <label><span>Data Type:</span><select data-field-data-type>${mysqlTypeOptions(tableDataTypes.filter(type => !['Lookup Wizard...', 'Calculated Field'].includes(type)))}</select></label>
                     <label data-field-format-row><span>Format:</span><select data-field-format></select></label>
                     <div class="fields-format-icons">
                         <button type="button" data-format-command="currency">${ribbonIcon('currency-symbol')}</button>
@@ -148,13 +198,18 @@ function decimalRibbonIcon(direction) {
 }
 
 function supportsFieldSize(column) {
-    return ['Short Text', 'Long Text', 'Number', 'Large Number', 'AutoNumber'].includes(column?.type);
+    return Boolean(column && acaciadbTypeForColumn(column) !== 'AutoNumber'
+        && !column.primaryKey && !column.lookup && !column.calculatedJavascript
+        && /^(?:VAR)?(?:CHAR|BINARY)\(/i.test(columnSqlType(column)));
 }
 
 function displayFieldSize(column) {
     if (!column) return '';
+    if (acaciadbTypeForColumn(column) === 'AutoNumber') {
+        return column.actualMysqlType || column.mysqlType || 'INT';
+    }
     if (column.fieldSize) return String(column.fieldSize);
-    if (['AutoNumber', 'Number', 'Large Number'].includes(column.type)) return 'Long Integer';
+    if (['Number', 'Large Number'].includes(column.type)) return columnSqlType(column);
     if (column.type === 'Short Text') return '255';
     return '';
 }
@@ -219,6 +274,7 @@ function updateFieldsRibbonState(column = window.acaciadbActiveTableColumn) {
 
     if (typeSelect && activeColumn) {
         const acaciadbType = acaciadbTypeForColumn(activeColumn);
+        typeSelect.innerHTML = mysqlTypeOptions(tableDataTypes.filter(type => type !== 'Lookup Wizard...' && (type !== 'Calculated Field' || isCalculated)), { ...activeColumn, type: acaciadbType });
         typeSelect.value = tableDataTypes.includes(acaciadbType) ? acaciadbType : 'Short Text';
         typeSelect.disabled = Boolean(protectedFieldSettings || acaciadbType === 'Attachment');
     }
@@ -250,6 +306,7 @@ function updateFieldsRibbonState(column = window.acaciadbActiveTableColumn) {
         const editable = supportsFieldSize(activeColumn);
         sizeRow.classList.toggle('disabled', !editable);
         sizeInput.disabled = !editable;
+        sizeInput.readOnly = !editable;
         sizeInput.value = displayFieldSize(activeColumn);
     }
 

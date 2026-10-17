@@ -248,7 +248,7 @@ function buildMoreFieldsMenu() {
                     ${items.map(([icon, label]) => `
                         <button class="more-fields-item" type="button" data-more-field="${escapeHtml(label)}">
                             <span class="more-fields-icon">${ribbonIcon(icon)}</span>
-                            <span>${escapeHtml(label)}</span>
+                            <span>${escapeHtml(fieldTypeDisplayLabel(label))}</span>
                         </button>
                     `).join('')}
                 </section>
@@ -264,7 +264,7 @@ function buildMoreFieldsMenu() {
                 ${calculatedFieldTypes.map(([icon, label]) => `
                     <button class="more-fields-item" type="button" data-calculated-field="${escapeHtml(label)}">
                         <span class="more-fields-icon">${ribbonIcon(icon)}</span>
-                        <span>${escapeHtml(label)}</span>
+                        <span>${escapeHtml(fieldTypeDisplayLabel(label))}</span>
                     </button>
                 `).join('')}
             </div>

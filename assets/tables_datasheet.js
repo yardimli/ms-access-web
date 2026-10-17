@@ -340,10 +340,11 @@ async function initTableViews(db) {
                 recalculateRow(row);
                 const cleanRow = {};
                 tableDef.structure.columns.forEach(column => {
-                    cleanRow[column.name] = normalizeCellValue(row[column.name] ?? '', column.type);
+                    cleanRow[column.name] = normalizeCellValue(row[column.name] ?? '', column.type, column);
                 });
 
                 status.textContent = 'Saving record...';
+                window.ExpressionBuilder.validateFields(tableDef.structure.columns, cleanRow);
                 const response = await postRecordAction({
                     action: 'update',
                     table: tableName,
@@ -587,6 +588,7 @@ async function initTableViews(db) {
         }
 
         function defaultValueForColumn(column) {
+            if (column.sqlDefaultMode === 'defined') return column.sqlDefaultValue ?? '';
             if (!column?.defaultJavascript) {
                 return '';
             }
@@ -610,6 +612,9 @@ async function initTableViews(db) {
                 return null;
             }
 
+            const scrollPosition = { top: host.scrollTop, left: host.scrollLeft };
+            let renamedStructure;
+
             const result = await showColumnDialog({
                 title: 'Rename Field',
                 label: 'Field name',
@@ -619,7 +624,7 @@ async function initTableViews(db) {
                 confirmText: 'Rename',
                 onSubmit: async ({ name, friendlyName, comment }) => {
                     status.textContent = 'Renaming field...';
-                    await postSchemaAction({
+                    const response = await postSchemaAction({
                         action: 'renameColumn',
                         table: tableName,
                         oldName,
@@ -627,16 +632,50 @@ async function initTableViews(db) {
                         friendlyName,
                         comment
                     });
+                    renamedStructure = response.payload.structure;
+                    if (name !== oldName) {
+                        savePrefs(renamedColumnPrefs(prefs, oldName, name));
+                        session.baseline = JSON.stringify(renamedColumnPrefs(JSON.parse(session.baseline), oldName, name));
+                        const savedPrefs = readTablePrefs(tableName);
+                        const renamedPrefs = renamedColumnPrefs(savedPrefs, oldName, name);
+                        if (JSON.stringify(savedPrefs) !== JSON.stringify(renamedPrefs)) {
+                            try { writeTablePrefs(tableName, renamedPrefs); }
+                            catch (error) { console.warn('Unable to update the saved layout after renaming the field.', error); }
+                        }
+                    }
                     return { name, friendlyName, comment };
                 }
             });
 
             if (!result) {
+                host.focus({ preventScroll: true });
+                host.scrollTop = scrollPosition.top;
+                host.scrollLeft = scrollPosition.left;
                 return null;
             }
 
+            // Rename in place so the current page, selection, and draft rows survive.
+            if (result.name !== oldName) {
+                const renameValue = record => {
+                    if (Object.prototype.hasOwnProperty.call(record, oldName)) {
+                        record[result.name] = record[oldName];
+                        delete record[oldName];
+                    }
+                };
+                rows.forEach(renameValue);
+                renameValue(insertDraft);
+                dirtyRows.forEach(dirty => renameValue(dirty.original));
+                if (sortState.column === oldName) sortState.column = result.name;
+                if (cursorColumnName === oldName) cursorColumnName = result.name;
+                if (activeColumnName === oldName) activeColumnName = result.name;
+            }
+            tableDef.structure = renamedStructure;
+            renderTable();
+            updateCellCursor();
+            host.focus({ preventScroll: true });
+            host.scrollTop = scrollPosition.top;
+            host.scrollLeft = scrollPosition.left;
             status.textContent = result.name === oldName ? `Updated ${oldName}` : `Renamed ${oldName} to ${result.name}`;
-            await loadView(currentView, { replaceActive: true });
             return result;
         }
 
@@ -680,10 +719,11 @@ async function initTableViews(db) {
 
                 const cleanRow = {};
                 tableDef.structure.columns.forEach(column => {
-                    cleanRow[column.name] = normalizeCellValue(row[column.name] ?? '', column.type);
+                    cleanRow[column.name] = normalizeCellValue(row[column.name] ?? '', column.type, column);
                 });
 
                 status.textContent = `Updating ${columnName}: ${index + 1} of ${rowSnapshots.length}`;
+                window.ExpressionBuilder.validateFields(tableDef.structure.columns, cleanRow);
                 const response = await postRecordAction({
                     action: 'update',
                     table: tableName,
@@ -811,8 +851,8 @@ async function initTableViews(db) {
                 confirmText: 'Add',
                 includeType: true,
                 typeValue: normalizedType || 'Short Text',
-                onSubmit: async ({ name, type: dialogType, friendlyName, comment }) => {
-                    const selectedType = fixedType ? normalizedType : dialogType;
+                onSubmit: async ({ name, type: dialogType, mysqlType, friendlyName, comment }) => {
+                    const selectedType = dialogType.startsWith('sql:') ? accessTypeForSql(mysqlType || dialogType.slice(4)) : dialogType;
                     if (selectedType === 'Lookup & Relationship') {
                         return { lookupRequested: true, name, type: selectedType, friendlyName, comment, afterColumn };
                     }
@@ -822,6 +862,7 @@ async function initTableViews(db) {
                         table: tableName,
                         name,
                         type: selectedType,
+                        mysqlType,
                         friendlyName,
                         comment,
                         afterColumn
@@ -1040,6 +1081,36 @@ async function initTableViews(db) {
             }
         }
 
+        async function editValidationMessage() {
+            const column = columnByName(activeColumnName);
+            if (!column) return;
+
+            const value = await showLargeTextEditorDialog({
+                title: `Field Validation Message — ${column.name}`,
+                value: column.validationText || ''
+            });
+            if (value === null) return;
+
+            try {
+                status.textContent = 'Saving validation message...';
+                await postSchemaAction({
+                    action: 'setValidationMessage',
+                    table: tableName,
+                    column: column.name,
+                    message: value
+                });
+                // Only metadata changed; keep pending cell edits and unsaved rows.
+                column.validationText = value.trim();
+                status.textContent = `Validation message saved for ${column.name}`;
+            } catch (error) {
+                await showMessageDialog({
+                    title: 'Field Validation Message Error',
+                    message: error.message,
+                    confirmText: 'OK'
+                });
+            }
+        }
+
         async function setValidationRule(rule, javascript = '', interpretNatural = false) {
             const column = columnByName(activeColumnName);
             if (!column) {
@@ -1078,8 +1149,12 @@ async function initTableViews(db) {
             }
         }
 
-        async function changeColumnType(acaciadbType) {
+        async function changeColumnType(acaciadbType, sqlType = '') {
             const column = columnByName(activeColumnName);
+            if (String(acaciadbType).startsWith('sql:')) {
+                sqlType = String(acaciadbType).slice(4);
+                acaciadbType = accessTypeForSql(sqlType);
+            }
             const nextType = String(acaciadbType || '');
             if (!column || !tableDataTypes.includes(nextType)) {
                 updateFieldsRibbonState(column);
@@ -1096,7 +1171,7 @@ async function initTableViews(db) {
                 return;
             }
 
-            if ((column.acaciadbType || column.type) === nextType) {
+            if ((column.acaciadbType || column.type) === nextType && !sqlType) {
                 return;
             }
 
@@ -1111,7 +1186,8 @@ async function initTableViews(db) {
                     action: 'setColumnType',
                     table: tableName,
                     column: column.name,
-                    acaciadbType: nextType
+                    acaciadbType: nextType,
+                    mysqlType: sqlType
                 });
 
                 if (response.payload?.structure) {
@@ -1281,6 +1357,7 @@ async function initTableViews(db) {
             changeColumnType,
             changeColumnFormat,
             setValidationRule,
+            editValidationMessage,
             getPageState: () => ({ skip: pagination.skip, limit: pagination.limit }),
             syncPagination,
             getExpressionContext: () => {
@@ -1354,12 +1431,14 @@ async function initTableViews(db) {
                 const newRow = {};
                 tableDef.structure.columns.forEach(column => {
                     const draftValue = insertDraft[column.name] ?? '';
+                    if (!Object.hasOwn(insertDraft, column.name) && ['null', 'current_timestamp'].includes(column.sqlDefaultMode) && !column.defaultJavascript) return;
                     const nextValue = draftValue === '' ? defaultValueForColumn(column) : draftValue;
-                    newRow[column.name] = normalizeCellValue(nextValue, column.type);
+                    newRow[column.name] = normalizeCellValue(nextValue, column.type, column);
                 });
                 recalculateRow(newRow);
 
                 status.textContent = 'Inserting record...';
+                window.ExpressionBuilder.validateFields(tableDef.structure.columns.filter(column => Object.hasOwn(newRow, column.name) || !['null', 'current_timestamp'].includes(column.sqlDefaultMode)), newRow);
                 const response = await postRecordAction({
                     action: 'insert',
                     table: tableName,

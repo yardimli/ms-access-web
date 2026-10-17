@@ -318,9 +318,11 @@ function showColumnDialog({
                         <label class="dialog-field">
                             <span>Data type</span>
                             <select name="fieldType">
-                                ${addColumnTypes.map(type => `<option value="${escapeHtml(type)}" ${type === typeValue ? 'selected' : ''}>${escapeHtml(type)}</option>`).join('')}
+                                ${mysqlTypeOptions(addColumnTypes, { type: typeValue })}
                             </select>
                         </label>
+                        <label class="dialog-field"><span>SQL Type</span><input name="mysqlType" value="${escapeHtml(mysqlFieldTypeLabel(typeValue).replace(/ \(.+\)$/, ''))}" placeholder="VARCHAR(512), DECIMAL(4,4), BLOB"></label>
+                        <p class="dialog-help">Edit size or precision and scale here, for example DECIMAL(4,4). ENUM/SET need quoted values. Some types require a compatible MySQL version.</p>
                     ` : ''}
                     <label class="dialog-field dialog-field-tall">
                         <span>Comment</span>
@@ -340,6 +342,15 @@ function showColumnDialog({
         const friendlyInput = dialog.querySelector('input[name="friendlyName"]');
         const commentInput = dialog.querySelector('textarea[name="fieldComment"]');
         const typeSelect = dialog.querySelector('select[name="fieldType"]');
+        const sqlInput = dialog.querySelector('input[name="mysqlType"]');
+        const syncSqlInput = () => {
+            if (!sqlInput || !typeSelect) return;
+            const value = typeSelect.value;
+            sqlInput.disabled = !value.startsWith('sql:') && ['Lookup & Relationship', 'Calculated Field', 'AutoNumber', 'Address', 'Category', 'Name', 'Payment Type', 'Phone', 'Priority', 'Start and End Dates', 'Status', 'Tag'].includes(value);
+            sqlInput.value = sqlInput.disabled ? '' : value.startsWith('sql:') ? value.slice(4) : mysqlFieldTypeLabel(value).replace(/ \(.+\)$/, '');
+        };
+        typeSelect?.addEventListener('change', syncSqlInput);
+        syncSqlInput();
         const error = dialog.querySelector('[data-dialog-error]');
         const submitButton = dialog.querySelector('button[type="submit"]');
         let settled = false;
@@ -373,6 +384,7 @@ function showColumnDialog({
                 const result = await onSubmit?.({
                     name: nextName,
                     type: typeSelect?.value || typeValue,
+                    mysqlType: sqlInput && !sqlInput.disabled ? sqlInput.value.trim() : '',
                     friendlyName: friendlyInput?.value.trim() || '',
                     comment: commentInput?.value.trim() || ''
                 });
@@ -628,6 +640,18 @@ function orderedTableColumns(tableDef, prefs) {
     const ordered = order.map(name => byName.get(name)).filter(Boolean);
     const missing = baseColumns.filter(column => !order.includes(column.name));
     return [...ordered, ...missing];
+}
+
+function renamedColumnPrefs(prefs, oldName, newName) {
+    if (oldName === newName) return prefs;
+    const next = { ...prefs };
+    if (Array.isArray(prefs.columnOrder)) next.columnOrder = prefs.columnOrder.map(name => name === oldName ? newName : name);
+    if (prefs.columnWidths && Object.hasOwn(prefs.columnWidths, oldName)) {
+        next.columnWidths = { ...prefs.columnWidths, [newName]: prefs.columnWidths[oldName] };
+        delete next.columnWidths[oldName];
+    }
+    if (prefs.sortState?.column === oldName) next.sortState = { ...prefs.sortState, column: newName };
+    return next;
 }
 
 function enableSubformSorting(host, tableDef, rows, columns) {

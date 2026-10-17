@@ -136,6 +136,7 @@ function initFormViews(db) {
                     for (const row of table.data) {
                         const original = originals.get(row);
                         if (JSON.stringify(row) === JSON.stringify(original)) continue;
+                        window.ExpressionBuilder.validateFields(table.structure.columns, row);
                         const response = await postRecordAction({ action: 'update', table: name,
                             primaryKeyValue: original[table.structure.primaryKey], row: { ...row } });
                         if (response.row) Object.assign(row, response.row);

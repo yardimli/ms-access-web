@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../lib/acaciadb_data.php';
+require_once __DIR__ . '/../lib/sql_types.php';
 
 function schema_request(): array
 {
@@ -181,20 +182,10 @@ function allowed_mysql_column_types(): array
     ];
 }
 
-function validate_mysql_column_type(string $type): string
-{
-    $type = strtoupper(trim(preg_replace('/\s+/', ' ', $type)));
-    if (!in_array($type, allowed_mysql_column_types(), true)) {
-        throw new RuntimeException('Unsupported MySQL data type.');
-    }
-
-    return $type;
-}
-
 function fetch_column_definition(mysqli|SQLiteConnection $db, string $tableName, string $columnName): ?array
 {
     $stmt = $db->prepare(
-        'SELECT column_type, is_nullable, column_default, extra, column_comment
+        'SELECT column_type, is_nullable, column_default, extra, column_comment' . ($db instanceof SQLiteConnection ? '' : ', collation_name, character_set_name') . '
          FROM information_schema.columns
          WHERE table_schema = DATABASE()
            AND table_name = ?
@@ -204,7 +195,16 @@ function fetch_column_definition(mysqli|SQLiteConnection $db, string $tableName,
     $stmt->bind_param('ss', $tableName, $columnName);
     $stmt->execute();
     $row = $stmt->get_result()->fetch_assoc();
-
+    if ($row) {
+        $meta = fetch_table_metadata($db, $tableName)['columns'][$columnName] ?? [];
+        if ($db instanceof SQLiteConnection) $row['collation_name'] = $meta['collation'] ?? '';
+        $details = sql_default_details($row['column_default']);
+        if (($meta['sqlDefaultMode'] ?? '') === 'defined' && (string) ($meta['sqlDefaultValue'] ?? '') === (string) $row['column_default']) {
+            $details = ['sqlDefaultMode' => 'defined', 'sqlDefaultValue' => $row['column_default']];
+        }
+        $row['sql_default_mode'] = $details['sqlDefaultMode'];
+        if ($details['sqlDefaultMode'] === 'defined') $row['column_default'] = $details['sqlDefaultValue'];
+    }
     return $row ?: null;
 }
 
@@ -246,20 +246,25 @@ function column_definition_sql(array $column, ?string $comment = null): string
 {
     global $db;
     $sql = $column['column_type'];
+    if (!empty($column['character_set_name']) && !($db instanceof SQLiteConnection)) $sql .= ' CHARACTER SET ' . db_identifier($column['character_set_name']);
+    if (!empty($column['collation_name'])) $sql .= ' COLLATE ' . db_identifier($column['collation_name']);
     $sql .= strtoupper($column['is_nullable']) === 'NO' ? ' NOT NULL' : ' NULL';
-
-    if ($column['column_default'] !== null) {
+    $mode = $column['sql_default_mode'] ?? null;
+    if ($mode === 'null') {
+        $sql .= ' DEFAULT NULL';
+    } elseif ($column['column_default'] !== null && $mode !== 'none') {
         $default = $column['column_default'];
         $upper = strtoupper((string) $default);
-        if (in_array($upper, ['CURRENT_TIMESTAMP', 'CURRENT_TIMESTAMP()'], true)) {
-            $sql .= ' DEFAULT CURRENT_TIMESTAMP';
+        if ($mode !== 'defined' && preg_match('/^CURRENT_TIMESTAMP(?:\(\d*\))?$/D', $upper)) {
+            preg_match('/\((\d)\)/', $column['column_type'], $precision);
+            $sql .= ' DEFAULT CURRENT_TIMESTAMP' . (!($db instanceof SQLiteConnection) && isset($precision[1]) ? '(' . $precision[1] . ')' : '');
         } else {
             $sql .= " DEFAULT '" . $db->real_escape_string((string) $default) . "'";
         }
     }
 
     if ($column['extra']) {
-        $sql .= ' ' . $column['extra'];
+        $sql .= ' ' . trim(str_ireplace('DEFAULT_GENERATED', '', $column['extra']));
     }
 
     $columnComment = $comment ?? (string) ($column['column_comment'] ?? '');
@@ -651,12 +656,32 @@ try {
 
             $name = validate_field_name((string) ($change['name'] ?? ''));
             $acaciadbType = validate_acaciadb_column_type((string) ($change['type'] ?? 'Short Text'));
-            if (in_array($acaciadbType, ['Lookup & Relationship', 'Calculated Field'], true)) {
+            if ($acaciadbType === 'Lookup & Relationship') {
                 throw new RuntimeException('Use the Lookup or Calculated Field tools to create that field type.');
             }
             $newMysqlType = mysql_column_type_for_acaciadb_type($acaciadbType);
+            if (!empty($change['mysqlType']) && $acaciadbType !== 'Calculated Field') {
+                $newMysqlType = validate_mysql_column_type((string) $change['mysqlType']);
+            } elseif ($acaciadbType === 'Short Text' && isset($change['fieldSize'])) {
+                $newMysqlType = validate_mysql_column_type('VARCHAR(' . $change['fieldSize'] . ')');
+            }
+            if ($acaciadbType === 'Calculated Field') {
+                if (trim((string) ($change['calculatedJavascript'] ?? '')) === '') {
+                    throw new RuntimeException('Enter a calculated value for ' . $name . '.');
+                }
+                if (!$isNew) {
+                    $existingDefinition = fetch_column_definition($db, $resolvedTable, $originalName);
+                    $newMysqlType = (string) ($existingDefinition['column_type'] ?? $newMysqlType);
+                }
+            }
             $comment = trim((string) ($change['comment'] ?? ''));
             $friendlyName = trim((string) ($change['friendlyName'] ?? ''));
+            // Validate requested settings before issuing any DDL for this field.
+            apply_sql_field_settings($db, ['column_type' => $newMysqlType,
+                'is_nullable' => !empty($change['required']) ? 'NO' : 'YES', 'extra' => '', 'column_default' => null], $change);
+            // Validate requested settings before issuing any DDL for this field.
+            apply_sql_field_settings($db, ['column_type' => $newMysqlType,
+                'is_nullable' => !empty($change['required']) ? 'NO' : 'YES', 'extra' => '', 'column_default' => null], $change);
 
             if ($isNew) {
                 if (column_exists($db, $resolvedTable, $name)) {
@@ -685,6 +710,12 @@ try {
                 if (!$isPrimary && $currentType !== strtoupper($newMysqlType)) {
                     verify_column_type_change($db, $resolvedTable, $originalName, $newMysqlType, $definition);
                     $definition['column_type'] = $newMysqlType;
+                    if (!preg_match('/^(CHAR|VARCHAR|TINYTEXT|TEXT|MEDIUMTEXT|LONGTEXT|ENUM|SET)\b/i', $newMysqlType)) {
+                        unset($definition['collation_name'], $definition['character_set_name']);
+                    }
+                    if (!preg_match('/^(CHAR|VARCHAR|TINYTEXT|TEXT|MEDIUMTEXT|LONGTEXT|ENUM|SET)\b/i', $newMysqlType)) {
+                        unset($definition['collation_name'], $definition['character_set_name']);
+                    }
                     $definition['column_default'] = null;
                 }
                 if ($name !== $originalName || (!$isPrimary && $currentType !== strtoupper($newMysqlType)) || $comment !== (string) ($definition['column_comment'] ?? '')) {
@@ -738,6 +769,18 @@ try {
                 }
             }
 
+            if ($definition && (array_key_exists('collation', $change) || array_key_exists('sqlAttribute', $change) || array_key_exists('sqlDefaultMode', $change))) {
+                $definition = fetch_column_definition($db, $resolvedTable, $name);
+                $definition = apply_sql_field_settings($db, $definition, $change);
+                $db->query('ALTER TABLE ' . db_identifier($resolvedTable) . ' MODIFY COLUMN ' . db_identifier($name) . ' ' . column_definition_sql($definition, $comment));
+                $newMysqlType = $definition['column_type'];
+                if (array_key_exists('collation', $change)) $metadata['columns'][$name]['collation'] = $change['collation'];
+                if (array_key_exists('sqlDefaultMode', $change)) {
+                    $metadata['columns'][$name]['sqlDefaultMode'] = $change['sqlDefaultMode'];
+                    $metadata['columns'][$name]['sqlDefaultValue'] = (string) ($change['sqlDefaultValue'] ?? '');
+                    unset($metadata['columns'][$name]['defaultJavascript'], $metadata['columns'][$name]['defaultExpression']);
+                }
+            }
             $metadata['columns'][$name] = array_merge($metadata['columns'][$name] ?? [], [
                 'friendlyName' => $friendlyName,
                 'acaciadbType' => $acaciadbType,
@@ -752,6 +795,11 @@ try {
                 'inputMaskStoreSymbols' => filter_var($change['inputMaskStoreSymbols'] ?? true, FILTER_VALIDATE_BOOL),
                 'validationRule' => (string) ($change['validationRule'] ?? ''),
                 'validationJavascript' => (string) ($change['validationJavascript'] ?? ''),
+                'validationText' => (string) ($change['validationText'] ?? ''),
+                'allowZeroLength' => filter_var($change['allowZeroLength'] ?? ($metadata['columns'][$name]['allowZeroLength'] ?? true), FILTER_VALIDATE_BOOL),
+                'calculatedExpression' => (string) ($change['calculatedExpression'] ?? ($metadata['columns'][$name]['calculatedExpression'] ?? '')),
+                'calculatedJavascript' => (string) ($change['calculatedJavascript'] ?? ($metadata['columns'][$name]['calculatedJavascript'] ?? '')),
+                'calculatedInterpretNatural' => filter_var($change['calculatedInterpretNatural'] ?? ($metadata['columns'][$name]['calculatedInterpretNatural'] ?? false), FILTER_VALIDATE_BOOL),
                 'validationInterpretNatural' => filter_var($change['validationInterpretNatural'] ?? false, FILTER_VALIDATE_BOOL),
             ]);
         }
@@ -812,6 +860,14 @@ try {
         $quickDefinition = quick_start_definition($type);
         $storageAcaciaDBType = (string) ($quickDefinition['acaciadbType'] ?? $type);
         $storageMysqlType = (string) ($quickDefinition['mysqlType'] ?? mysql_column_type_for_acaciadb_type($storageAcaciaDBType));
+        if (!empty($request['mysqlType'])) {
+            $storageMysqlType = validate_mysql_column_type((string) $request['mysqlType']);
+            if (in_array($storageAcaciaDBType, ['Short Text', 'Long Text', 'Number', 'Large Number', 'OLE Object'], true)) {
+            if (in_array($storageAcaciaDBType, ['Short Text', 'Long Text', 'Number', 'Large Number', 'OLE Object'], true)) {
+                $storageAcaciaDBType = access_type_for_sql($storageMysqlType);
+            }
+            }
+        }
         if ($friendlyName === '') {
             $friendlyName = (string) ($quickDefinition['friendlyName'] ?? '');
         }
@@ -1071,6 +1127,12 @@ try {
         }
         $metadata['columns'][$newName] ??= [];
         $metadata['columns'][$newName]['friendlyName'] = $friendlyName;
+        if ($oldName !== $newName && is_array($metadata['columnOrder'] ?? null)) {
+            $metadata['columnOrder'] = array_map(
+                fn ($name) => $name === $oldName ? $newName : $name,
+                $metadata['columnOrder']
+            );
+        }
         save_table_metadata($db, $resolvedTable, $metadata);
 
         json_response([
@@ -1150,6 +1212,26 @@ try {
             'table' => $resolvedTable,
             'payload' => schema_table_payload($db, $resolvedTable, $request),
         ]);
+        exit;
+    }
+
+    if ($action === 'setValidationMessage') {
+        $columnName = validate_field_name((string) ($request['column'] ?? ''));
+        $message = trim((string) ($request['message'] ?? ''));
+        if (!column_exists($db, $resolvedTable, $columnName)) {
+            throw new RuntimeException('Field was not found.');
+        }
+
+        $metadata = fetch_table_metadata($db, $resolvedTable);
+        $metadata['columns'] ??= [];
+        $metadata['columns'][$columnName] ??= [];
+        if ($message === '') {
+            unset($metadata['columns'][$columnName]['validationText']);
+        } else {
+            $metadata['columns'][$columnName]['validationText'] = $message;
+        }
+        save_table_metadata($db, $resolvedTable, $metadata);
+        json_response(['ok' => true, 'table' => $resolvedTable]);
         exit;
     }
 
@@ -1286,6 +1368,10 @@ try {
         $columnName = validate_field_name((string) ($request['column'] ?? ''));
         $acaciadbType = validate_acaciadb_column_type((string) ($request['acaciadbType'] ?? $request['type'] ?? 'Short Text'));
         $newType = mysql_column_type_for_acaciadb_type($acaciadbType);
+        if (!empty($request['mysqlType'])) {
+            $newType = validate_mysql_column_type((string) $request['mysqlType']);
+            $acaciadbType = access_type_for_sql($newType);
+        }
 
         if (!column_exists($db, $resolvedTable, $columnName)) {
             throw new RuntimeException('Field was not found.');
@@ -1301,6 +1387,12 @@ try {
         if ($currentType !== strtoupper($newType)) {
             verify_column_type_change($db, $resolvedTable, $columnName, $newType, $definition);
             $definition['column_type'] = $newType;
+            if (!preg_match('/^(CHAR|VARCHAR|TINYTEXT|TEXT|MEDIUMTEXT|LONGTEXT|ENUM|SET)\b/i', $newType)) {
+                unset($definition['collation_name'], $definition['character_set_name']);
+            }
+            if (!preg_match('/^(CHAR|VARCHAR|TINYTEXT|TEXT|MEDIUMTEXT|LONGTEXT|ENUM|SET)\b/i', $newType)) {
+                unset($definition['collation_name'], $definition['character_set_name']);
+            }
             $definition['column_default'] = null;
             $db->query(
                 'ALTER TABLE ' . db_identifier($resolvedTable) .

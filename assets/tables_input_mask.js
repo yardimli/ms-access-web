@@ -1,10 +1,20 @@
 const acaciadbInputMaskPresets = [
+    { name: 'Custom', mask: '', example: '' },
     { name: 'Phone Number', mask: '(999) 000-0000', example: '(206) 555-1212' },
+    { name: 'US Phone with Country Code', mask: '+\\1 (000) 000-0000', example: '+1 (206) 555-1212' },
     { name: 'Social Security Number', mask: '000-00-0000', example: '831-86-7180' },
     { name: 'Zip Code', mask: '00000-9999', example: '98052-6399' },
+    { name: 'US ZIP (5 digits)', mask: '00000', example: '98052' },
+    { name: 'Canadian Postal Code', mask: '>L0L 0L0', example: 'K1A 0B1' },
+    { name: 'Date (MM/DD/YYYY)', mask: '00/00/0000', example: '10/17/2026' },
+    { name: 'Date (DD/MM/YYYY)', mask: '00/00/0000', example: '17/10/2026' },
+    { name: 'Date (YYYY-MM-DD)', mask: '0000-00-00', example: '2026-10-17' },
+    { name: 'Short Time (24-hour)', mask: '00:00', example: '13:12' },
+    { name: 'PIN (4 digits)', mask: '0000', example: '1234' },
+    { name: 'Product Code', mask: '>LLL-0000', example: 'ABC-1234' },
     { name: 'Extension', mask: '99999', example: '63215' },
     { name: 'Password', mask: 'Password', example: '********' },
-    { name: 'Long Time', mask: '00:00:00', example: '1:12:00 PM' }
+    { name: 'Long Time', mask: '00:00:00', example: '13:12:00' }
 ];
 
 function formatInputMaskPreview(value, mask, placeholder = '_') {
@@ -83,9 +93,11 @@ window.AcaciaDBInputMaskWizard = {
     open(options = {}) {
         return new Promise(resolve => {
             const existingMask = String(options.mask || '');
-            const matchedPreset = acaciadbInputMaskPresets.find(preset => preset.mask === existingMask);
+            const matchedPreset = acaciadbInputMaskPresets.find(preset => preset.mask === existingMask && preset.name === options.name)
+                || acaciadbInputMaskPresets.find(preset => preset.mask === existingMask);
             const state = {
                 step: 0,
+                selectedPreset: matchedPreset?.name || 'Custom',
                 name: options.name || matchedPreset?.name || (existingMask ? 'Custom' : acaciadbInputMaskPresets[0].name),
                 mask: existingMask || matchedPreset?.mask || acaciadbInputMaskPresets[0].mask,
                 placeholder: options.placeholder ?? '_',
@@ -97,7 +109,6 @@ window.AcaciaDBInputMaskWizard = {
             dialog.className = 'acaciadb-dialog input-mask-wizard-dialog';
             document.body.appendChild(dialog);
 
-            const selectedPreset = () => acaciadbInputMaskPresets.find(preset => preset.name === state.name);
             const preview = () => formatInputMaskPreview(state.tryValue, state.mask, state.placeholder);
             const finish = value => {
                 result = value;
@@ -105,14 +116,16 @@ window.AcaciaDBInputMaskWizard = {
             };
 
             function tryBox() {
-                return `<label class="input-mask-try"><span>Try It:</span><input data-mask-try value="${escapeHtml(state.tryValue)}" autocomplete="off"><output data-mask-preview>${escapeHtml(preview())}</output></label>`;
+                return `<div class="input-mask-try"><label for="mask-try-value">Try It:</label><input id="mask-try-value" data-mask-try value="${escapeHtml(state.tryValue)}" autocomplete="off">
+                    ${state.step === 0 ? `<label for="mask-pattern">Mask:</label><input id="mask-pattern" data-mask-pattern value="${escapeHtml(state.mask)}" spellcheck="false" autocomplete="off">` : ''}
+                    <output data-mask-preview aria-live="polite">${escapeHtml(preview())}</output></div>`;
             }
 
             function stepBody() {
                 if (state.step === 0) {
-                    return `<div class="input-mask-copy"><p>Which input mask matches how you want data to look?</p><p>To see how a selected mask works, use the Try It box.<br>To change the Input Mask list, click the Edit List button.</p></div>
+                    return `<div class="input-mask-copy"><p>Which input mask matches how you want data to look?</p><p>Choose a preset or start with Custom, then edit the Mask below Try It.<br>Use Try It to preview your mask, or Help to see the mask characters.</p></div>
                         <div class="input-mask-list-head"><span>Input Mask:</span><span>Data Look:</span></div>
-                        <div class="input-mask-list" role="listbox">${acaciadbInputMaskPresets.map(preset => `<button type="button" role="option" aria-selected="${preset.name === state.name}" class="${preset.name === state.name ? 'selected' : ''}" data-mask-preset="${escapeHtml(preset.name)}"><span>${escapeHtml(preset.name)}</span><span>${escapeHtml(preset.example)}</span></button>`).join('')}</div>
+                        <div class="input-mask-list" role="listbox" aria-label="Input mask presets">${acaciadbInputMaskPresets.map(preset => `<button type="button" role="option" aria-selected="${preset.name === state.selectedPreset}" class="${preset.name === state.selectedPreset ? 'selected' : ''}" data-mask-preset="${escapeHtml(preset.name)}"><span>${escapeHtml(preset.name)}</span><span>${escapeHtml(preset.example)}</span></button>`).join('')}</div>
                         ${tryBox()}`;
                 }
                 if (state.step === 1) {
@@ -157,12 +170,22 @@ window.AcaciaDBInputMaskWizard = {
                     const preset = acaciadbInputMaskPresets.find(item => item.name === button.dataset.maskPreset);
                     if (!preset) return;
                     state.name = preset.name;
+                    state.selectedPreset = preset.name;
                     state.mask = preset.mask;
                     render();
                 }));
                 dialog.querySelector('[data-mask-name]')?.addEventListener('input', event => { state.name = event.target.value; });
                 dialog.querySelector('[data-mask-pattern]')?.addEventListener('input', event => {
                     state.mask = event.target.value;
+                    state.selectedPreset = 'Custom';
+                    state.name = 'Custom';
+                    const nameInput = dialog.querySelector('[data-mask-name]');
+                    if (nameInput) nameInput.value = state.name;
+                    dialog.querySelectorAll('[data-mask-preset]').forEach(button => {
+                        const selected = button.dataset.maskPreset === 'Custom';
+                        button.classList.toggle('selected', selected);
+                        button.setAttribute('aria-selected', String(selected));
+                    });
                     const output = dialog.querySelector('[data-mask-preview]');
                     if (output) output.textContent = preview();
                 });
