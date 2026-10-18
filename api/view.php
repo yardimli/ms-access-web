@@ -49,7 +49,7 @@ try {
 
         if ($view === "table-$slug") {
             $payload = view_payload($view, 'table', 'datasheet', $table, $table, 'Datasheet View', [
-                'tables' => [$table => fetch_table_payload($db, $table, true, $tableSkip, $tableLimit)],
+                'tables' => [$table => fetch_table_payload($db, $table, true, $tableSkip, $tableLimit, (string) ($_GET['sortColumn'] ?? ''), (string) ($_GET['sortDirection'] ?? 'none'))],
             ]);
             break;
         }

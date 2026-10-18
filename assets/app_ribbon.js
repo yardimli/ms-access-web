@@ -563,7 +563,7 @@ function renderHomeRibbon() {
                 <div class="home-stack">
                     ${homeMini('sort-asc', 'Ascending')}
                     ${homeMini('sort-desc', 'Descending')}
-                    ${homeMini('remove-sort', 'Remove Sort', { disabled: true })}
+                    ${homeMini('remove-sort', 'Remove Sort', { disabled: !isTableDatasheetView(currentView) })}
                 </div>
                 <div class="home-stack home-stack-wide">
                     ${homeMini('selection', 'Selection', { caret: true, menu: 'selection' })}

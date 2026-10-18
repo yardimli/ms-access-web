@@ -275,6 +275,31 @@ test('design shows SQL labels and Access names and saves calculated value edits'
     assert.equal(ctx.mysqlFieldTypeLabel('Calculated Field'), 'Calculated Field');
 });
 
+test('General properties adapt to SQL type and expose schema dialogs', () => {
+    const { ctx } = context();
+    const handlers = {};
+    const properties = { innerHTML: '', classList: { toggle() {} } };
+    const sheet = { innerHTML: '' };
+    const view = { dataset: { tableId: 'Demo' }, querySelector: selector => ({
+        '[data-field-property-grid]': properties, '[data-property-sheet-grid]': sheet
+    })[selector] || null, querySelectorAll: () => [], addEventListener: (type, handler) => { handlers[type] = handler; } };
+    ctx.content = { querySelectorAll: () => [view] };
+    ctx.ribbon = { querySelector: () => null };
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../assets/tables_design_editor.js'), 'utf8'), ctx);
+    ctx.initDesignViews({ tables: { Demo: { structure: { columns: [{ name: 'value', type: 'Short Text', mysqlType: 'VARCHAR(255)' }] } } } });
+    assert.match(properties.innerHTML, /data-field-property="allowZeroLength"/);
+    assert.doesNotMatch(properties.innerHTML, /data-manage-schema="auto"/);
+    const target = { closest: () => null, matches: () => false, dataset: { fieldProperty: 'mysqlType' }, value: 'INT' };
+    handlers.input({ target });
+    handlers.change({ target });
+    assert.match(properties.innerHTML, /data-manage-schema="auto"/);
+    assert.doesNotMatch(properties.innerHTML, /data-field-property="(?:allowZeroLength|fieldSize|inputMask)"/);
+    assert.match(sheet.innerHTML, /data-manage-schema="primary"/);
+    assert.match(sheet.innerHTML, /data-schema-property="storageEngine"/);
+    assert.match(sheet.innerHTML, /data-schema-property="collation"/);
+    assert.match(sheet.innerHTML, /Edit SQL table comment/);
+});
+
 test('field size updates the selected VARCHAR label and the saved SQL declaration', async () => {
     const { ctx } = context();
     const handlers = {};
@@ -429,4 +454,184 @@ test('tab switches retain drafts but clean design views reload the current schem
     assert.deepEqual(ctx.window.acaciadbActiveDesignController.fields, ['renamed_field', 'new_field']);
     assert.equal(ctx.window.acaciadbActiveDesignController.isDirty(), false);
     assert.equal(fetches, 4);
+});
+
+
+test('save, discard, and keep designing cancel pending configuration until a fresh click', async () => {
+    const { ctx } = context();
+    const handlers = {};
+    const body = { innerHTML: '' };
+    const view = { dataset: { tableId: 'Demo' },
+        querySelector: selector => selector === '[data-design-body]' ? body : null,
+        querySelectorAll: () => [],
+        addEventListener: (type, handler) => { handlers[type] = handler; } };
+    ctx.content = { querySelectorAll: () => [view] };
+    ctx.ribbon = { querySelector: () => null };
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../assets/tables_design_editor.js'), 'utf8'), ctx);
+    ctx.initDesignViews({ tables: { Demo: { structure: { columns: [{ name: 'name', type: 'Short Text' }] } } } });
+    const controller = ctx.window.acaciadbActiveDesignController;
+    let opened = 0;
+    let saved = 0;
+    ctx.postSchemaAction = async () => {
+        saved++;
+        return { payload: { structure: { columns: [{ name: 'name', type: 'Short Text', comment: 'saved' }] } } };
+    };
+    ctx.openTableManagementDialog = async options => {
+        opened++;
+        assert.equal(options.column, 'name');
+        assert.equal(controller.isDirty(), false);
+    };
+    const rename = value => handlers.input({ target: {
+        closest: () => null, matches: selector => selector === '[data-design-name]', dataset: {}, value
+    } });
+    rename('draft');
+    ctx.showDesignSaveDialog = async () => 'cancel';
+    await controller.openIndexesDialog();
+    assert.equal(controller.isDirty(), true);
+    assert.equal(opened, 0);
+    ctx.showDesignSaveDialog = async () => 'discard';
+    await controller.openIndexesDialog();
+    assert.equal(opened, 0);
+    assert.equal(controller.isDirty(), false);
+    assert.match(body.innerHTML, /value="name"/);
+    assert.doesNotMatch(body.innerHTML, /value="draft"/);
+    // Even invalid drafts can be discarded without passing save validation.
+    rename('');
+    await controller.openPrimaryKeyDialog();
+    assert.equal(opened, 0);
+    assert.equal(saved, 0);
+    rename('saved_draft');
+    ctx.showDesignSaveDialog = async () => 'save';
+    await controller.openIndexesDialog();
+    assert.equal(saved, 1);
+    assert.equal(controller.isDirty(), false);
+    assert.equal(opened, 0);
+    await controller.openIndexesDialog();
+    assert.equal(opened, 1);
+    // A newly inserted field disappears on discard; its AUTO_INCREMENT action must not target its replacement.
+    controller.insertSelectedField();
+    assert.equal(controller.isDirty(), true);
+    ctx.showDesignSaveDialog = async () => 'discard';
+    await handlers.click({ target: { closest: selector => selector === '[data-manage-schema]' ? { dataset: { manageSchema: 'auto' } } : null } });
+    assert.equal(controller.isDirty(), false);
+    assert.equal(opened, 1);
+    assert.doesNotMatch(body.innerHTML, /value="Field1"/);
+});
+
+
+test('lookup eligibility follows SQL types and excludes binary and generated fields', () => {
+    const { ctx } = context();
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../assets/tables_design_editor.js'), 'utf8'), ctx);
+    const eligible = ['CHAR(1)', 'VARCHAR(512)', 'TINYINT', 'SMALLINT', 'MEDIUMINT', 'INT', 'BIGINT', 'DECIMAL(4,4)', 'BOOLEAN', 'BIT(1)', 'DATE', 'TIME', 'DATETIME', 'TIMESTAMP', 'YEAR', "ENUM('a','b')"];
+    for (const mysqlType of eligible) assert.equal(ctx.designLookupDisabledReason({ type: ctx.accessTypeForSql(mysqlType), mysqlType }), '', mysqlType);
+    const excluded = ['BINARY(1)', 'VARBINARY(255)', 'TINYTEXT', 'TEXT', 'MEDIUMTEXT', 'LONGTEXT', 'TINYBLOB', 'BLOB', 'MEDIUMBLOB', 'LONGBLOB', 'FLOAT', 'DOUBLE', 'BIT(8)', "SET('a')", 'JSON', 'GEOMETRY', 'POINT', 'LINESTRING', 'POLYGON', 'MULTIPOINT', 'MULTILINESTRING', 'MULTIPOLYGON', 'GEOMETRYCOLLECTION', 'VECTOR(3)', 'INT AUTO_INCREMENT'];
+    for (const mysqlType of excluded) assert.ok(ctx.designLookupDisabledReason({ type: 'Short Text', mysqlType }), mysqlType);
+    for (const type of ['AutoNumber', 'Attachment', 'OLE Object', 'Calculated Field', 'HTML Text']) assert.ok(ctx.designLookupDisabledReason({ type, mysqlType: 'VARCHAR(255)' }), type);
+});
+
+test('design creates a manual key/value lookup without changing the SQL type', async () => {
+    const { ctx } = context();
+    const handlers = {};
+    const body = { innerHTML: '' };
+    const properties = { innerHTML: '', classList: { toggle() {} } };
+    const lookupTab = {};
+    const view = { dataset: { tableId: 'Demo' }, querySelector: selector => ({
+        '[data-design-body]': body, '[data-field-property-grid]': properties, '[data-field-tab="lookup"]': lookupTab
+    })[selector] || null, querySelectorAll: () => [], addEventListener: (type, handler) => { handlers[type] = handler; } };
+    ctx.content = { querySelectorAll: () => [view] };
+    ctx.ribbon = { querySelector: () => null };
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../assets/tables_design_editor.js'), 'utf8'), ctx);
+    const original = { name: 'rate', type: 'Currency', mysqlType: 'DECIMAL(12,2)' };
+    ctx.initDesignViews({ tables: { Demo: { structure: { columns: [original] } } } });
+    assert.equal(lookupTab.disabled, false);
+    await handlers.click({ target: { closest: selector => selector === '[data-field-tab]' ? { dataset: { fieldTab: 'lookup' } } : null } });
+    assert.match(properties.innerHTML, /Create Lookup/);
+    ctx.getDatabase = async () => ({ tables: {} });
+    ctx.mergeViewData = () => {};
+    const pairs = [{ key: '1.25', value: 'Standard' }, { key: '2.50', value: 'Premium' }];
+    ctx.window.AcaciaDBLookupWizard = { open: async options => {
+        assert.equal(options.preserveFieldType, true);
+        return { lookup: { kind: 'static', allowMultiple: false, columns: 2, keyColumn: 'Col1', displayColumns: ['Col2'], source: pairs, limitToList: false } };
+    } };
+    const controller = ctx.window.acaciadbActiveDesignController;
+    await controller.modifySelectedLookup();
+    assert.equal(controller.isDirty(), true);
+    assert.match(properties.innerHTML, /Modify Lookup/);
+    let saved;
+    ctx.postSchemaAction = async request => {
+        saved = request.columns[0];
+        return { payload: { structure: { columns: [{ ...original, lookup: saved.lookup }] } } };
+    };
+    assert.equal(await controller.saveDesign({ promptForConfirmation: false }), true);
+    assert.equal(saved.mysqlType, 'DECIMAL(12,2)');
+    assert.equal(saved.lookup.mode, 'single');
+    assert.equal(JSON.stringify(saved.lookup.source), JSON.stringify(pairs));
+    assert.equal(saved.lookup.limitToList, false);
+    assert.equal(JSON.stringify(ctx.parseDesignLookupValues(ctx.designLookupRowSource(saved.lookup))), JSON.stringify(pairs));
+});
+
+test('manual lookup lists preserve stored keys and allow optional free entry', () => {
+    const { ctx } = context();
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../assets/tables_lookup.js'), 'utf8'), ctx);
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../assets/tables_editing.js'), 'utf8'), ctx);
+    const source = ctx.lookupWizardRowsToSource([['9007199254740993', 'Large ID'], ['2', 'Second']], 'Col1', ['Col2']);
+    assert.equal(source[0].key, '9007199254740993');
+    assert.equal(ctx.lookupWizardOptionToRows(source, 2)[0][1], 'Large ID');
+    ctx.document.createElement = tag => ({ tag, innerHTML: '', setAttribute(key, value) { this[key] = value; } });
+    const children = [];
+    const editor = { appendChild: child => children.push(child) };
+    const input = ctx.createSingleLookupInput({ kind: 'static', limitToList: false, source }, 'custom', editor);
+    assert.equal(input.tag, 'input');
+    assert.equal(input.value, 'custom');
+    assert.match(children[0].innerHTML, /value="9007199254740993">Large ID/);
+    const select = ctx.createSingleLookupInput({ kind: 'static', limitToList: true, source }, '2', editor);
+    assert.equal(select.tag, 'select');
+    assert.match(select.innerHTML, /value="2" selected>Second/);
+});
+
+
+test('schema properties show live values and dropdown changes preserve other settings', async () => {
+    const { ctx } = context();
+    const handlers = {};
+    const properties = { innerHTML: '', classList: { toggle() {} } };
+    const sheet = { innerHTML: '' };
+    const view = { dataset: { tableId: 'Demo' }, querySelector: selector => ({
+        '[data-field-property-grid]': properties, '[data-property-sheet-grid]': sheet
+    })[selector] || null, querySelectorAll: () => [], addEventListener: (type, handler) => { handlers[type] = handler; } };
+    ctx.content = { querySelectorAll: () => [view] };
+    ctx.ribbon = { querySelector: () => null };
+    const state = { name: 'Demo', indexes: [{ type: 'PRIMARY', columns: [{ name: 'id' }] }],
+        autoColumn: 'id', nextAutoIncrement: '1234', storageEngine: 'InnoDB', engines: ['InnoDB', 'MyISAM'],
+        collation: 'utf8mb4_unicode_ci', comment: 'A long table comment', options: { engine: 'mysql', collations: [{ name: 'utf8mb4_unicode_ci' }, { name: 'utf8mb4_bin' }] } };
+    ctx.fetch = async () => ({ ok: true, json: async () => ({ ok: true, management: state }) });
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../assets/tables_design_editor.js'), 'utf8'), ctx);
+    ctx.initDesignViews({ tables: { Demo: { structure: { columns: [{ name: 'id', type: 'AutoNumber', mysqlType: 'INT', primaryKey: true }] } } } });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.match(properties.innerHTML, /Yes; next: 1234/);
+    assert.match(properties.innerHTML, /data-manage-schema="auto"/);
+    assert.match(sheet.innerHTML, /value="id"/);
+    assert.match(sheet.innerHTML, /value="InnoDB" selected/);
+    assert.match(sheet.innerHTML, /value="utf8mb4_unicode_ci" selected/);
+    assert.match(sheet.innerHTML, /value="A long table comment" title="A long table comment"/);
+    let requests = [];
+    ctx.postSchemaAction = async request => {
+        requests.push(request);
+        return { management: { ...state, collation: request.collation || state.collation } };
+    };
+    await handlers.change({ target: { dataset: { schemaProperty: 'collation' }, value: 'utf8mb4_bin' } });
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].action, 'saveTableOptions');
+    assert.equal(requests[0].collation, 'utf8mb4_bin');
+    assert.equal(requests[0].comment, undefined);
+    assert.equal(requests[0].storageEngine, undefined);
+    assert.match(sheet.innerHTML, /value="utf8mb4_bin" selected/);
+    ctx.postSchemaAction = async () => { throw new Error('Engine rejected'); };
+    await handlers.change({ target: { dataset: { schemaProperty: 'storageEngine' }, value: 'MyISAM' } });
+    assert.match(sheet.innerHTML, /value="InnoDB" selected/);
+    handlers.input({ target: { closest: () => null, matches: () => false, dataset: { fieldProperty: 'friendlyName' }, value: 'Identifier' } });
+    ctx.showDesignSaveDialog = async () => 'discard';
+    await handlers.change({ target: { dataset: { schemaProperty: 'storageEngine' }, value: 'MyISAM' } });
+    assert.equal(ctx.window.acaciadbActiveDesignController.isDirty(), false);
+    assert.equal(requests.length, 1);
+    assert.match(sheet.innerHTML, /value="InnoDB" selected/);
 });

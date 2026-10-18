@@ -57,6 +57,7 @@ window.AcaciaDBLookupWizard = {
         tableName,
         tableColumns = [],
         existingColumn = null,
+        preserveFieldType = false,
         defaultName = 'Field1',
         defaultFriendlyName = ''
     } = {}) {
@@ -66,7 +67,7 @@ window.AcaciaDBLookupWizard = {
             const lockedMultipleStorage = existingLookup?.mode === 'multiple';
             const state = {
                 step: lockedKind ? 1 : 0,
-                kind: lockedKind || 'table',
+                kind: lockedKind || (preserveFieldType ? 'static' : 'table'),
                 viewFilter: 'tables',
                 sourceObjectType: existingLookup?.sourceObjectType || 'table',
                 sourceObjectName: existingLookup?.sourceObjectName || '',
@@ -177,6 +178,7 @@ window.AcaciaDBLookupWizard = {
                         displayColumns,
                         label: state.friendlyName || state.label,
                         allowMultiple: state.allowMultiple,
+                        mode: state.allowMultiple ? 'multiple' : 'single',
                         limitToList: state.limitToList,
                         valueType: state.valueType,
                         source: lookupWizardRowsToSource(state.staticRows, state.keyColumn || columnNames[0], displayColumns)
@@ -196,6 +198,7 @@ window.AcaciaDBLookupWizard = {
                     sort: state.sort.filter(item => item.field),
                     label: state.friendlyName || state.label,
                     allowMultiple: state.allowMultiple,
+                        mode: state.allowMultiple ? 'multiple' : 'single',
                     storageMode: state.allowMultiple ? state.multipleStorage : 'column',
                     dataIntegrity: state.dataIntegrity,
                     cascadeDelete: state.cascadeDelete
@@ -354,7 +357,8 @@ window.AcaciaDBLookupWizard = {
                 if (!state.displayColumns.length) state.displayColumns = [columnNames[Math.min(1, columnNames.length - 1)] || columnNames[0]];
                 return `
                     <div class="lookup-wizard-pane lookup-full-pane">
-                        <p>What values do you want to see in your lookup field? Enter the number of columns you want in the list, and then type the values you want in each cell.</p>
+                        <p>Type your own values here; no source table is needed. Use one column for a simple list, or two columns for stored keys and display labels. On the next step, choose which column to store.</p>
+                        <button type="button" data-static-add-row>Add row</button>
                         <label class="lookup-column-count">Number of columns: <input type="number" min="1" max="8" value="${escapeHtml(state.staticColumns)}" data-static-columns></label>
                         <div class="lookup-preview-grid lookup-static-grid">
                             <table>
@@ -371,18 +375,18 @@ window.AcaciaDBLookupWizard = {
                     <div class="lookup-wizard-content">
                         ${lookupWizardImage()}
                         <div class="lookup-wizard-pane">
-                            <label>What label would you like for your lookup field?<input class="lookup-wide-input" value="${escapeHtml(state.label)}" data-lookup-label></label>
+                            <label>What label would you like for your lookup field?<input class="lookup-wide-input" value="${escapeHtml(state.label)}" ${preserveFieldType ? 'readonly' : ''} data-lookup-label></label>
                             <label class="lookup-wide-input-label">Friendly name<input class="lookup-wide-input" value="${escapeHtml(state.friendlyName)}" data-lookup-friendly placeholder="Optional display label"></label>
                             ${state.kind === 'static' ? `
                                 <label class="lookup-check-line"><input type="checkbox" data-limit-list ${state.limitToList ? 'checked' : ''}> Limit To List</label>
                             ` : `
                                 <p>Do you want to enable data integrity between these tables?</p>
-                                <label class="lookup-check-line"><input type="checkbox" data-data-integrity ${state.dataIntegrity ? 'checked' : ''}> Enable Data Integrity</label>
+                                <label class="lookup-check-line"><input type="checkbox" data-data-integrity ${preserveFieldType ? 'disabled' : ''} ${state.dataIntegrity ? 'checked' : ''}> Enable Data Integrity</label>
                                 <label class="lookup-radio-line disabled"><input type="radio" disabled ${state.cascadeDelete ? 'checked' : ''}> Cascade Delete</label>
                                 <label class="lookup-radio-line disabled"><input type="radio" disabled ${!state.cascadeDelete ? 'checked' : ''}> Restrict Delete</label>
                             `}
-                            <p>Do you want to store multiple values for this lookup?</p>
-                            <label class="lookup-check-line ${existingLookup ? 'disabled' : ''}"><input type="checkbox" data-allow-multiple ${state.allowMultiple ? 'checked' : ''} ${existingLookup ? 'disabled' : ''}> Allow Multiple Values</label>
+                            <p>${preserveFieldType ? 'This lookup preserves the existing field type and stores one selected value.' : 'Do you want to store multiple values for this lookup?'}</p>
+                            <label class="lookup-check-line ${existingLookup || preserveFieldType ? 'disabled' : ''}"><input type="checkbox" data-allow-multiple ${state.allowMultiple ? 'checked' : ''} ${existingLookup || preserveFieldType ? 'disabled' : ''}> Allow Multiple Values</label>
                             ${state.kind === 'table' && state.allowMultiple ? `
                                 <p>Should AcaciaDB create an external relational table for this one-to-many relationship?</p>
                                 <label class="lookup-radio-line"><input type="radio" name="multipleStorage" value="relationship" ${state.multipleStorage === 'relationship' ? 'checked' : ''} ${lockedMultipleStorage ? 'disabled' : ''}> Yes, create an external relationship table and show a virtual lookup field.</label>
@@ -499,6 +503,10 @@ window.AcaciaDBLookupWizard = {
                 dialog.querySelector('[data-key-field]')?.addEventListener('change', event => {
                     state.keyColumn = event.target.value;
                     if (!state.displayColumns.length) state.displayColumns = [event.target.value];
+                });
+                dialog.querySelector('[data-static-add-row]')?.addEventListener('click', () => {
+                    state.staticRows.push(Array.from({ length: state.staticColumns }, () => ''));
+                    render();
                 });
                 dialog.querySelector('[data-static-columns]')?.addEventListener('change', event => {
                     state.staticColumns = Math.max(1, Math.min(8, Number(event.target.value || 1)));

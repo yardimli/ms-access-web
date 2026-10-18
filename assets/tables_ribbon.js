@@ -370,7 +370,10 @@ function renderTableDesignRibbon() {
             </div>
             <div class="design-ribbon-group" data-label="Show/Hide">
                 ${designCommand('properties', 'Property Sheet')}
-                ${designCommand('index', 'Indexes')}
+                <div class="design-stack">
+                    ${designMini('index', 'Indexes')}
+                    ${designMini('relationships', 'Foreign Keys')}
+                </div>
             </div>
             <div class="design-ribbon-group" data-label="Field, Record & Table Events">
                 ${designCommand('macro', 'Create Data Macros', { disabled: true, caret: true })}

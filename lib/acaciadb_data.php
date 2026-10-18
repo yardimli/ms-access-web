@@ -2,6 +2,7 @@
 
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/schema_options.php';
+require_once __DIR__ . '/sql_types.php';
 
 function acaciadb_slug(string $name): string
 {
@@ -389,6 +390,8 @@ function fetch_table_columns(mysqli|SQLiteConnection $db, string $tableName): ar
 
     foreach ($stmt->get_result() as $row) {
         $inferredAcaciaDBType = acaciadb_type_from_mysql($row['data_type'], $row['column_type'], $row['column_key']);
+        if (stripos((string) $row['extra'], 'auto_increment') !== false) $inferredAcaciaDBType = 'AutoNumber';
+        elseif ($inferredAcaciaDBType === 'AutoNumber') $inferredAcaciaDBType = access_type_for_sql($row['column_type']);
         $columnDefinition = $columnMetadata[$row['column_name']] ?? [];
         $acaciadbType = is_array($columnDefinition['lookup'] ?? null)
             ? 'Lookup & Relationship'
@@ -551,10 +554,19 @@ function fetch_table_indexes(mysqli|SQLiteConnection $db, string $tableName): ar
     return $indexes;
 }
 
-function fetch_table_rows(mysqli|SQLiteConnection $db, string $tableName, string $primaryKey = '', int $skip = 0, int $limit = 500): array
+function fetch_table_rows(mysqli|SQLiteConnection $db, string $tableName, string $primaryKey = '', int $skip = 0, int $limit = 500, string $sortColumn = '', string $sortDirection = 'none'): array
 {
     [$skip, $limit] = normalize_table_page($skip, $limit);
     $orderSql = $primaryKey !== '' ? ' ORDER BY ' . db_identifier($primaryKey) : '';
+    if ($sortColumn !== '' && $sortDirection !== 'none') {
+        [$sortColumns] = fetch_table_columns($db, $tableName);
+        if (!in_array($sortColumn, array_column($sortColumns, 'name'), true)) throw new RuntimeException('Unknown sort field.');
+        if (!in_array(strtolower($sortDirection), ['asc', 'desc'], true)) throw new RuntimeException('Invalid sort direction.');
+        $orderSql = ' ORDER BY ' . db_identifier($sortColumn) . ' ' . strtoupper($sortDirection);
+        foreach ($sortColumns as $tieColumn) {
+            if (!empty($tieColumn['primaryKey']) && $tieColumn['name'] !== $sortColumn) $orderSql .= ', ' . db_identifier($tieColumn['name']);
+        }
+    }
     $result = $db->query(
         'SELECT * FROM ' . db_identifier($tableName) . $orderSql .
         ' LIMIT ' . $limit . ' OFFSET ' . $skip
@@ -583,7 +595,7 @@ function fetch_table_row_by_primary_key(mysqli|SQLiteConnection $db, string $tab
     return $row ?: null;
 }
 
-function fetch_table_payload(mysqli|SQLiteConnection $db, string $tableName, bool $includeRows = true, int $skip = 0, int $limit = 500): array
+function fetch_table_payload(mysqli|SQLiteConnection $db, string $tableName, bool $includeRows = true, int $skip = 0, int $limit = 500, string $sortColumn = '', string $sortDirection = 'none'): array
 {
     [$columns, $primaryKey] = fetch_table_columns($db, $tableName);
     $columns = hydrate_lookup_metadata($db, $tableName, $columns, $primaryKey);
@@ -603,7 +615,7 @@ function fetch_table_payload(mysqli|SQLiteConnection $db, string $tableName, boo
         if ($totalRows > 0 && $skip >= $totalRows) {
             $skip = (int) (floor(($totalRows - 1) / $limit) * $limit);
         }
-        $rows = fetch_table_rows($db, $tableName, $primaryKey, $skip, $limit);
+        $rows = fetch_table_rows($db, $tableName, $primaryKey, $skip, $limit, $sortColumn, $sortDirection);
         foreach ($columns as $column) {
             $lookup = $column['lookup'] ?? null;
             if (

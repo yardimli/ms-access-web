@@ -3,7 +3,34 @@ const designFieldTypes = [
     'Date/Time', 'Currency', 'AutoNumber', 'Yes/No', 'Hyperlink', 'Attachment', 'OLE Object', 'Calculated Field'
 ];
 
-const designLookupTypes = new Set(['Short Text', 'Number']);
+function designLookupDisabledReason(column) {
+    if (!column) return 'Select a field first.';
+    if (column.calculatedJavascript || ['Calculated Field', 'AutoNumber', 'Attachment', 'OLE Object', 'Long Text', 'HTML Text', 'Rich Text'].includes(column.type)) return 'This field type does not support a lookup.';
+    const sql = columnSqlType(column).toUpperCase();
+    if (column.inferredAcaciaDBType === 'AutoNumber' || /AUTO_INCREMENT/.test(sql) || /auto_increment/i.test(column.extra || '')) return 'Automatically generated fields cannot use a lookup.';
+    if (/^BIT\(1\)$/.test(sql)) return '';
+    if (/^(CHAR|VARCHAR|TINYINT|SMALLINT|MEDIUMINT|INT|INTEGER|BIGINT|DECIMAL|NUMERIC|BOOLEAN|BOOL|DATE|TIME|DATETIME|TIMESTAMP|YEAR|ENUM)\b/.test(sql)) return '';
+    return 'This SQL type is unsuitable for a lookup. Use a short text, exact numeric, date/time, or Yes/No field.';
+}
+
+function designLookupRowSource(lookup) {
+    const source = lookup.source || [];
+    return source.some(value => typeof value === 'object' || String(value).includes(';'))
+        ? JSON.stringify(source) : source.join(';');
+}
+
+function parseDesignLookupValues(value) {
+    if (value.trim().startsWith('[')) {
+        const source = JSON.parse(value);
+        if (!Array.isArray(source) || source.some(item => typeof item !== 'string' && typeof item !== 'number' && !(item && typeof item === 'object' && 'key' in item && 'value' in item))) throw new Error('Enter a JSON list of values or {"key":"stored value","value":"display label"} pairs.');
+        return source;
+    }
+    return value.split(';').map(item => item.trim()).filter(Boolean);
+}
+
+function schemaPropertyControl(value, mode, label) {
+    return `<div class="property-builder-control"><input type="text" readonly value="${escapeHtml(value)}" title="${escapeHtml(value)}" aria-label="${escapeHtml(label)}"><button type="button" data-manage-schema="${mode}" title="Edit ${escapeHtml(label)}" aria-label="Edit ${escapeHtml(label)}"><i class="fas fa-ellipsis-h"></i></button></div>`;
+}
 
 const designPropertyHelp = {
     sqlDefaultMode: 'None removes the SQL default. As defined stores a literal value. NULL requires an optional field. CURRENT_TIMESTAMP uses the database clock for TIMESTAMP or DATETIME fields.',
@@ -28,7 +55,7 @@ const designPropertyHelp = {
     textAlign: 'Controls how values in this field are aligned when displayed in Datasheet View.',
     displayControl: 'The type of control used to display and edit this field. Text Box removes the lookup; List Box and Combo Box use lookup settings.',
     rowSourceType: 'The type of source used by the lookup control. Choose Table/Query for database rows or Value List for values entered directly.',
-    rowSource: 'The table, query, or value list that supplies choices for the lookup control.',
+    rowSource: 'Use Modify Lookup to enter values or key/value pairs. Simple lists can also be entered here separated by semicolons; pairs use a JSON array.',
     boundColumn: 'The column whose value is stored in this field when the user selects a lookup item.',
     columnCount: 'The number of columns displayed by the lookup control.',
     columnHeads: 'Specifies whether the first row of the lookup source is displayed as column headings.',
@@ -75,9 +102,7 @@ function sqlDefaultControl(column) {
 
 function designBaseType(column) {
     if (!column?.lookup) return column?.acaciadbType || column?.type || 'Short Text';
-    return /(?:^|\W)(?:tinyint|smallint|mediumint|int|bigint|decimal|numeric)(?:\W|$)/i.test(column.actualMysqlType || column.mysqlType || '')
-        ? 'Number'
-        : 'Short Text';
+    return accessTypeForSql(column.mysqlType || column.actualMysqlType || 'VARCHAR(255)');
 }
 
 function showDesignSaveDialog(tableName, descriptions, destructive) {
@@ -108,6 +133,10 @@ function initDesignViews(db) {
         const tableName = view.dataset.tableId;
         const tableDef = db.tables[tableName];
         const schemaOptions = tableDef?.structure?.schemaOptions || { engine: '', collations: [] };
+        let managementState = null;
+        let managementLoading = false;
+        let managementError = '';
+        let managementVersion = 0;
         const sourceColumns = tableDef?.structure?.columns || [];
         const columns = sourceColumns.map((column, index) => ({
             ...cloneDesignValue(column), type: designBaseType(column), originalName: column.name,
@@ -149,7 +178,10 @@ function initDesignViews(db) {
             }
             if (column.type === 'AutoNumber') {
                 return [
-                    ['Field Size', 'fieldSize', 'Long Integer', 'text', true],
+                    ['Field Size', 'fieldSize', columnSqlType(column), 'text', true],
+                    ['Collation', 'collation', column.collation || '', 'collation'],
+                    ['Attributes', 'sqlAttribute', column.sqlAttribute || '', 'sqlAttribute'],
+                    ['AUTO_INCREMENT', 'autoIncrement', '', 'autoIncrement'],
                     ['New Values', 'newValues', 'Increment', 'text', true],
                     ['Format', 'format', column.acaciadbFormat || '', 'text', true],
                     ['Caption', 'friendlyName', column.friendlyName || '', 'text'],
@@ -159,6 +191,8 @@ function initDesignViews(db) {
             }
             const rows = [
                 ['SQL Type', 'mysqlType', columnSqlType(column), 'text', Boolean(column.lookup)],
+                ['Collation', 'collation', column.collation || '', 'collation'],
+                ['Attributes', 'sqlAttribute', column.sqlAttribute || '', 'sqlAttribute'],
                 ['Field Size', 'fieldSize', fieldSizeFor(column), 'text', !/^(?:VAR)?(?:CHAR|BINARY)\(/i.test(columnSqlType(column))]
             ];
             if (['Number', 'Currency', 'Date/Time'].includes(column.type)) rows.push(['Format', 'acaciadbFormat', column.acaciadbFormat || '', 'text']);
@@ -175,17 +209,31 @@ function initDesignViews(db) {
                 ['Description', 'comment', column.comment || '', 'text'],
                 ['Text Align', 'textAlign', column.textAlign || 'General', 'select', false, ['General', 'Left', 'Center', 'Right']]
             );
-            return rows;
+            const sqlType = columnSqlType(column);
+            const text = /^(?:CHAR|VARCHAR|.*TEXT|ENUM|SET)\b/i.test(sqlType);
+            const integer = /^(?:TINYINT|SMALLINT|MEDIUMINT|INT|INTEGER|BIGINT)\b/i.test(sqlType);
+            if (integer && !column.lookup) rows.push(['AUTO_INCREMENT', 'autoIncrement', '', 'autoIncrement']);
+            return rows.filter(([, key]) => {
+                if (key === 'allowZeroLength') return text;
+                if (key === 'fieldSize') return /^(?:VAR)?(?:CHAR|BINARY)\(/i.test(sqlType);
+                if (key === 'inputMask') return text || /^(?:DATE|DATETIME|TIME|TIMESTAMP)\b/i.test(sqlType);
+                return true;
+            });
         }
 
         function lookupProperties(column) {
-            if (!column?.lookup || !designLookupTypes.has(column.type)) return [];
+            if (designLookupDisabledReason(column)) return [];
+            if (!column.lookup) return [
+                ['Display Control', 'displayControl', 'Text Box', 'text', true],
+                ['Lookup', 'lookup', 'Create Lookup…', 'lookupBuilder']
+            ];
             const lookup = column.lookup;
             const sourceType = lookup.kind === 'table' ? 'Table/Query' : 'Value List';
             const rowSource = lookup.kind === 'table'
                 ? (lookup.rowSource || `${lookup.sourceObjectName || ''};${(lookup.displayColumns || []).join(',')}`)
-                : (lookup.rowSource || (lookup.source || []).map(option => typeof option === 'object' ? (option.value ?? option.label ?? option.key ?? '') : option).join(';'));
+                : designLookupRowSource(lookup);
             return [
+                ['Lookup', 'lookup', 'Modify Lookup…', 'lookupBuilder'],
                 ['Display Control', 'displayControl', lookup.displayControl || (column.lookup ? 'Combo Box' : 'Text Box'), 'select', false, ['Text Box', 'List Box', 'Combo Box']],
                 ['Row Source Type', 'rowSourceType', sourceType, 'select', false, ['Table/Query', 'Value List']],
                 ['Row Source', 'rowSource', rowSource, 'text', false],
@@ -196,7 +244,7 @@ function initDesignViews(db) {
                 ['List Rows', 'listRows', lookup.listRows || 16, 'number', false],
                 ['List Width', 'listWidth', lookup.listWidth || 'Auto', 'text', false],
                 ['Limit To List', 'limitToList', lookup.limitToList === false ? 'No' : 'Yes', 'select', false, ['No', 'Yes']],
-                ['Allow Multiple Values', 'allowMultiple', lookup.mode === 'multiple' ? 'Yes' : 'No', 'select', false, ['No', 'Yes']],
+                ['Allow Multiple Values', 'allowMultiple', lookup.mode === 'multiple' ? 'Yes' : 'No', 'select', true, ['No', 'Yes']],
                 ['Allow Value List Edits', 'allowValueListEdits', lookup.allowValueListEdits ? 'Yes' : 'No', 'select', false, ['No', 'Yes']],
                 ['List Items Edit Form', 'listItemsEditForm', lookup.listItemsEditForm || '', 'text', false],
                 ['Show Only Row Source Values', 'showOnlyRowSourceValues', lookup.showOnlyRowSourceValues ? 'Yes' : 'No', 'select', false, ['No', 'Yes']]
@@ -204,6 +252,20 @@ function initDesignViews(db) {
         }
 
         function propertyControl(key, value, kind, disabled, options = []) {
+            if (kind === 'collation' || kind === 'sqlAttribute') {
+                const column = selectedColumn();
+                return kind === 'collation' ? `<select data-field-property="collation" aria-label="Collation for ${escapeHtml(column.name)}" ${column.lookup || column.type === 'Calculated Field' || !/^(CHAR|VARCHAR|TINYTEXT|TEXT|MEDIUMTEXT|LONGTEXT|ENUM|SET)\b/i.test(columnSqlType(column)) ? 'disabled' : ''}>
+                        <option value="">Default</option>${schemaOptions.collations.map(item => `<option value="${escapeHtml(item.name)}" ${item.name === column.collation ? 'selected' : ''}>${escapeHtml(item.name)}</option>`).join('')}</select>` : `<select data-field-property="sqlAttribute" aria-label="Attributes for ${escapeHtml(column.name)}" ${schemaOptions.engine !== 'mysql' || column.lookup || column.type === 'Calculated Field' ? 'disabled' : ''}>
+                        ${['', ...(/^(CHAR|VARCHAR|TINYTEXT|TEXT|MEDIUMTEXT|LONGTEXT|ENUM|SET)\b/i.test(columnSqlType(column)) ? ['BINARY'] : []), ...(/^(TINYINT|SMALLINT|MEDIUMINT|INT|INTEGER|BIGINT|DECIMAL|NUMERIC|FLOAT|DOUBLE)\b/i.test(columnSqlType(column)) ? ['UNSIGNED', 'UNSIGNED ZEROFILL'] : []), ...(/^(TIMESTAMP|DATETIME)\b/i.test(columnSqlType(column)) ? ['ON UPDATE CURRENT_TIMESTAMP'] : [])].map(value => `<option value="${value}" ${value === (column.sqlAttribute || '') ? 'selected' : ''}>${value || 'None'}</option>`).join('')}</select>`;
+            }
+            if (kind === 'lookupBuilder') return `<button type="button" data-field-builder="lookup">${escapeHtml(value)}</button>`;
+            if (kind === 'autoIncrement') {
+                const column = selectedColumn();
+                const enabled = managementState ? managementState.autoColumn === column.originalName && !column.isNew : column.type === 'AutoNumber';
+                const summary = column.isNew ? 'No (unsaved field)' : enabled
+                    ? `Yes; next: ${managementState?.nextAutoIncrement || '…'}` : managementState ? 'No' : managementError || 'Loading…';
+                return schemaPropertyControl(summary, 'auto', 'AUTO_INCREMENT');
+            }
             if (kind === 'sqlDefault') return sqlDefaultControl(selectedColumn());
             const common = `data-field-property="${escapeHtml(key)}" ${disabled ? 'disabled' : ''}`;
             if (kind === 'calculatedBuilder') return `<div class="property-builder-control"><input type="text" value="${escapeHtml(value)}" ${common} spellcheck="false"><button type="button" data-field-builder="calculated" title="Edit calculated expression" aria-label="Edit calculated expression"><i class="fas fa-ellipsis-h"></i></button></div>`;
@@ -281,9 +343,9 @@ function initDesignViews(db) {
             const host = view.querySelector('[data-field-property-grid]');
             if (!host || !column) return;
             const lookupTab = view.querySelector('[data-field-tab="lookup"]');
-            const hasLookup = Boolean(column.lookup);
-            if (lookupTab) lookupTab.disabled = !hasLookup;
-            if (!hasLookup && activeFieldTab === 'lookup') activeFieldTab = 'general';
+            const lookupReason = designLookupDisabledReason(column);
+            if (lookupTab) { lookupTab.disabled = Boolean(lookupReason); lookupTab.title = lookupReason; }
+            if (lookupReason && activeFieldTab === 'lookup') activeFieldTab = 'general';
             view.querySelectorAll('[data-field-tab]').forEach(button => button.classList.toggle('active', button.dataset.fieldTab === activeFieldTab));
             const rows = activeFieldTab === 'lookup' ? lookupProperties(column) : generalProperties(column);
             host.classList.toggle('empty', rows.length === 0);
@@ -317,8 +379,9 @@ function initDesignViews(db) {
             const deleteButton = ribbon.querySelector('.table-design-ribbon [data-command="delete"]');
             const primaryButton = ribbon.querySelector('.table-design-ribbon [data-command="primary-key"]');
             if (lookupButton) {
-                lookupButton.disabled = !column?.lookup;
-                lookupButton.classList.toggle('disabled', !column?.lookup);
+                lookupButton.disabled = Boolean(designLookupDisabledReason(column));
+                lookupButton.classList.toggle('disabled', lookupButton.disabled);
+                lookupButton.title = designLookupDisabledReason(column) || (column.lookup ? 'Modify Lookup' : 'Create Lookup');
             }
             if (deleteButton) {
                 deleteButton.disabled = !column || column.primaryKey;
@@ -342,7 +405,15 @@ function initDesignViews(db) {
                 ['Subdatasheet Name', 'subdatasheetName'], ['Link Child Fields', 'linkChildFields'], ['Link Master Fields', 'linkMasterFields'],
                 ['Filter On Load', 'filterOnLoad', ['No', 'Yes']], ['Order By On Load', 'orderByOnLoad', ['No', 'Yes']]
             ];
-            host.innerHTML = rows.map(([label, key, options]) => `<div class="prop-label">${escapeHtml(label)}</div><div class="prop-value">${options
+            const state = managementState;
+            const pending = managementError || 'Loading…';
+            const primary = state?.indexes?.find(index => index.type === 'PRIMARY')?.columns.map(part => part.name).join(', ') || visibleColumns().filter(column => column.primaryKey).map(column => column.name).join(', ') || 'None';
+            const dropdown = (key, value, values, label) => `<select data-schema-property="${key}" aria-label="${label}" title="${escapeHtml(value || '')}" ${!state || managementLoading || state.options.engine !== 'mysql' ? 'disabled' : ''}>${[...new Set([value, ...values])].filter(value => value !== undefined && value !== null).map(option => `<option value="${escapeHtml(option)}" ${option === value ? 'selected' : ''}>${escapeHtml(option || 'Not applicable')}</option>`).join('')}</select>`;
+            host.innerHTML = `<div class="prop-label">Primary key</div><div class="prop-value">${schemaPropertyControl(primary, 'primary', 'primary key')}</div>
+                <div class="prop-label">Table name</div><div class="prop-value">${schemaPropertyControl(state?.name || tableName, 'table', 'table name')}</div>
+                <div class="prop-label">Storage engine</div><div class="prop-value">${dropdown('storageEngine', state?.storageEngine ?? pending, state?.engines || [], 'Storage engine')}</div>
+                <div class="prop-label">Table collation</div><div class="prop-value">${dropdown('collation', state?.collation ?? pending, state?.options.collations.map(item => item.name) || [], 'Table collation')}</div>
+                <div class="prop-label">SQL table comment</div><div class="prop-value">${schemaPropertyControl(state ? state.comment || '' : pending, 'table', 'SQL table comment')}</div>` + rows.map(([label, key, options]) => `<div class="prop-label">${escapeHtml(label)}</div><div class="prop-value">${options
                 ? `<select data-table-property="${key}">${options.map(option => `<option ${option === tableProperties[key] ? 'selected' : ''}>${escapeHtml(option)}</option>`).join('')}</select>`
                 : `<input data-table-property="${key}" value="${escapeHtml(tableProperties[key] || '')}">`}</div>`).join('');
         }
@@ -356,13 +427,9 @@ function initDesignViews(db) {
                     <td class="row-head" draggable="${!column.primaryKey}" title="${column.primaryKey ? 'Primary key position is fixed' : 'Drag to reorder field'}" data-design-row-head="${index}">${column.primaryKey ? '<i class="fas fa-key"></i>' : index === selectedIndex ? '<i class="fas fa-caret-right"></i>' : ''}</td>
                     <td><input class="design-cell-input" data-design-name value="${escapeHtml(column.name)}" ${column.primaryKey ? 'disabled' : ''}></td>
                     <td class="design-type-cell"><select data-design-type ${column.primaryKey || column.lookup || column.calculatedJavascript ? 'disabled' : ''}>${mysqlTypeOptions(designFieldTypes, column)}</select></td>
-                    <td><select data-field-property="collation" aria-label="Collation for ${escapeHtml(column.name)}" ${column.lookup || column.type === 'Calculated Field' || !/^(CHAR|VARCHAR|TINYTEXT|TEXT|MEDIUMTEXT|LONGTEXT|ENUM|SET)\b/i.test(columnSqlType(column)) ? 'disabled' : ''}>
-                        <option value="">Default</option>${schemaOptions.collations.map(item => `<option value="${escapeHtml(item.name)}" ${item.name === column.collation ? 'selected' : ''}>${escapeHtml(item.name)}</option>`).join('')}</select></td>
-                    <td><select data-field-property="sqlAttribute" aria-label="Attributes for ${escapeHtml(column.name)}" ${schemaOptions.engine !== 'mysql' || column.lookup || column.type === 'Calculated Field' ? 'disabled' : ''}>
-                        ${['', ...(/^(CHAR|VARCHAR|TINYTEXT|TEXT|MEDIUMTEXT|LONGTEXT|ENUM|SET)\b/i.test(columnSqlType(column)) ? ['BINARY'] : []), ...(/^(TINYINT|SMALLINT|MEDIUMINT|INT|INTEGER|BIGINT|DECIMAL|NUMERIC|FLOAT|DOUBLE)\b/i.test(columnSqlType(column)) ? ['UNSIGNED', 'UNSIGNED ZEROFILL'] : []), ...(/^(TIMESTAMP|DATETIME)\b/i.test(columnSqlType(column)) ? ['ON UPDATE CURRENT_TIMESTAMP'] : [])].map(value => `<option value="${value}" ${value === (column.sqlAttribute || '') ? 'selected' : ''}>${value || 'None'}</option>`).join('')}</select></td>
                     <td><input class="design-cell-input" data-design-comment value="${escapeHtml(column.comment || '')}"></td>
                 </tr>`;
-            }).join('') + Array.from({ length: Math.max(3, 8 - visibleColumns().length) }, () => '<tr data-empty-design-row><td class="row-head"></td><td></td><td></td><td></td><td></td><td></td></tr>').join('');
+            }).join('') + Array.from({ length: Math.max(3, 8 - visibleColumns().length) }, () => '<tr data-empty-design-row><td class="row-head"></td><td></td><td></td><td></td></tr>').join('');
         }
 
         function selectDesignRow(index) {
@@ -424,78 +491,106 @@ function initDesignViews(db) {
 
         async function modifySelectedLookup() {
             const column = selectedColumn();
-            if (!column?.lookup || !window.AcaciaDBLookupWizard?.open) return;
+            if (designLookupDisabledReason(column) || !window.AcaciaDBLookupWizard?.open) return;
             const wizardDb = await getDatabase();
             mergeViewData(wizardDb, { tables: { [tableName]: tableDef } });
             const result = await window.AcaciaDBLookupWizard.open({
                 db: wizardDb,
                 tableName,
                 tableColumns: visibleColumns(),
-                existingColumn: { ...cloneDesignValue(column), acaciadbType: 'Lookup & Relationship' },
+                existingColumn: cloneDesignValue(column),
+                preserveFieldType: true,
                 defaultName: column.name,
                 defaultFriendlyName: column.friendlyName || ''
             });
             if (!result) return;
-            column.lookup = cloneDesignValue(result.lookup);
+            column.lookup = { ...cloneDesignValue(column.lookup || {}), ...cloneDesignValue(result.lookup),
+                mode: result.lookup.allowMultiple ? 'multiple' : 'single', displayControl: 'Combo Box' };
+            delete column.lookup.rowSource;
             column.friendlyName = result.friendlyName || column.friendlyName || '';
             activeFieldTab = 'lookup';
+            renderRows();
             renderFieldProperties();
             updateDesignRibbonState();
         }
 
-        function indexRows() {
-            const storedIndexes = tableDef.structure.indexes || [];
-            return visibleColumns().flatMap(column => {
-                if (column.primaryKey) {
-                    return [{ name: 'PrimaryKey', field: column.name, primary: true, unique: true, ignoreNulls: false, sortOrder: 'Ascending' }];
-                }
-                if (!column.indexed && !column.unique) return [];
-                const matches = storedIndexes.filter(index => !index.primary && index.field === column.originalName);
-                if (matches.length) {
-                    return matches.map(index => ({ ...index, field: column.name, ignoreNulls: false }));
-                }
-                return [{
-                    name: column.unique ? `ux_acaciadb_${column.name}` : `ix_acaciadb_${column.name}`,
-                    field: column.name,
-                    primary: false,
-                    unique: Boolean(column.unique),
-                    ignoreNulls: false,
-                    sortOrder: 'Ascending'
-                }];
-            });
+        async function refreshManagementState() {
+            const version = ++managementVersion;
+            try {
+                const response = await fetch('api/schema.php', { method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    body: JSON.stringify({ action: 'getTableManagement', table: tableName }) });
+                const result = await response.json();
+                if (!response.ok || !result.ok) throw new Error(result.error || 'Unable to load table properties');
+                if (version !== managementVersion) return;
+                managementState = result.management;
+                managementError = '';
+            } catch (error) {
+                if (version !== managementVersion) return;
+                managementError = 'Unable to load current value';
+            }
+            renderFieldProperties(); renderPropertySheet();
         }
 
-        function openIndexesDialog() {
-            const indexes = indexRows();
-            const dialog = document.createElement('dialog');
-            dialog.className = 'acaciadb-dialog indexes-dialog';
-            dialog.innerHTML = `<form method="dialog"><div class="acaciadb-dialog-title"><span><i class="fas fa-bolt"></i> Indexes: ${escapeHtml(tableName)}</span>
-                <button type="button" data-dialog-close aria-label="Close"><i class="fas fa-times"></i></button></div>
-                <div class="indexes-grid-wrap"><table class="acaciadb-grid indexes-grid"><thead><tr><th></th><th>Index Name</th><th>Field Name</th><th>Sort Order</th></tr></thead>
-                <tbody>${indexes.map((item, index) => `<tr data-index-row="${index}" class="${index === 0 ? 'editing' : ''}"><td class="row-head">${item.primary ? '<i class="fas fa-key"></i>' : ''}</td><td>${escapeHtml(item.name)}</td><td>${escapeHtml(item.field)}</td><td>${escapeHtml(item.sortOrder || 'Ascending')}</td></tr>`).join('')}</tbody></table>
-                ${indexes.length ? '' : '<p class="indexes-empty">This table has no indexed fields.</p>'}</div>
-                <div class="indexes-properties"><div class="field-properties-title">Index Properties</div><div class="indexes-properties-body"><div class="property-grid" data-index-properties></div>
-                <p>The name for this index. Each index can use up to 10 fields.</p></div></div></form>`;
-            document.body.appendChild(dialog);
-            const propertyHost = dialog.querySelector('[data-index-properties]');
-            const renderIndexProperties = index => {
-                const item = indexes[index];
-                propertyHost.innerHTML = item ? [
-                    ['Primary', item.primary ? 'Yes' : 'No'], ['Unique', item.unique ? 'Yes' : 'No'], ['Ignore Nulls', item.ignoreNulls ? 'Yes' : 'No']
-                ].map(([label, value]) => `<div class="prop-label">${label}</div><div class="prop-value">${value}</div>`).join('') : '';
-            };
-            renderIndexProperties(0);
-            dialog.addEventListener('click', event => {
-                const row = event.target.closest('[data-index-row]');
-                if (row) {
-                    dialog.querySelectorAll('[data-index-row]').forEach(candidate => candidate.classList.toggle('editing', candidate === row));
-                    renderIndexProperties(Number(row.dataset.indexRow));
-                }
-                if (event.target.closest('[data-dialog-close]')) dialog.close();
-            });
-            dialog.addEventListener('close', () => dialog.remove(), { once: true });
-            showMovableModal(dialog);
+        async function changeTableProperty(key, value) {
+            if (!managementState || managementLoading || !['storageEngine', 'collation'].includes(key)) return;
+            if (isDirty()) {
+                await saveDesign();
+                renderPropertySheet();
+                return;
+            }
+            managementLoading = true;
+            renderPropertySheet();
+            try {
+                const response = await postSchemaAction({ action: 'saveTableOptions', table: tableName, [key]: value });
+                ++managementVersion;
+                managementState = response.management;
+                managementError = '';
+                databasePromise = null;
+                status.textContent = 'Table properties updated';
+            } catch (error) {
+                await showMessageDialog({ title: 'Table Properties', message: error.message, confirmText: 'OK' });
+            } finally {
+                managementLoading = false;
+                renderPropertySheet(); renderFieldProperties();
+            }
         }
+
+        async function openManagement(mode) {
+            try {
+                if (isDirty()) {
+                    await saveDesign();
+                    // Saving or discarding can replace the selected field. Require a fresh action.
+                    return;
+                }
+                await openTableManagementDialog({ table: tableName, mode, column: selectedColumn()?.name || '',
+                    onSaved: async response => {
+                        databasePromise = null;
+                        if (response.table !== tableName) {
+                            const tab = findOpenObjectTab(currentView);
+                            if (tab) { tab.editors = {}; tab.layout = null; }
+                            await loadView(`design-${objectSlug(response.table)}`, { replaceActive: true });
+                            return;
+                        }
+                        ++managementVersion;
+                        managementState = response.management;
+                        managementError = '';
+                        tableDef.structure = response.payload.structure;
+                        columns.splice(0, columns.length, ...tableDef.structure.columns.map((column, index) => ({
+                            ...cloneDesignValue(column), type: designBaseType(column), originalName: column.name,
+                            originalIndex: index, isNew: false, deleted: false
+                        })));
+                        originalColumns = cloneDesignValue(columns);
+                        renderRows(); renderFieldProperties(); renderPropertySheet(); updateDesignRibbonState(); updateQuickSaveState();
+                        status.textContent = 'Table schema updated';
+                    }
+                });
+            } catch (error) {
+                await showMessageDialog({ title: 'Table Schema', message: error.message, confirmText: 'OK' });
+            }
+        }
+
+        function openIndexesDialog() { return openManagement('indexes'); }
 
         function showRowMenu(event, index) {
             document.querySelector('.design-row-menu')?.remove();
@@ -529,7 +624,7 @@ function initDesignViews(db) {
             lookup.displayControl ||= 'Combo Box';
             lookup.kind ||= 'static';
             lookup.mode ||= 'single';
-            lookup.valueType ||= column.type === 'Number' ? 'integer' : 'string';
+            lookup.valueType ||= /^(?:TINYINT|SMALLINT|MEDIUMINT|INT|BIGINT)\b/i.test(columnSqlType(column)) ? 'integer' : 'string';
             if (lookup.kind === 'static') {
                 lookup.keyColumn ||= 'Col1';
                 lookup.displayColumns ||= ['Col1'];
@@ -576,9 +671,45 @@ function initDesignViews(db) {
         const orderChanged = () => JSON.stringify(visibleColumns().map(column => column.originalName)) !== JSON.stringify(originalColumns.map(column => column.originalName));
         const isDirty = () => orderChanged() || designChanges().length > 0 || JSON.stringify(tableProperties) !== JSON.stringify(originalTableProperties);
 
+        function discardDesignChanges() {
+            columns.splice(0, columns.length, ...cloneDesignValue(originalColumns));
+            Object.keys(tableProperties).forEach(key => delete tableProperties[key]);
+            Object.assign(tableProperties, cloneDesignValue(originalTableProperties));
+            selectedIndex = Math.min(selectedIndex, Math.max(0, columns.length - 1));
+            renderRows();
+            renderFieldProperties();
+            renderPropertySheet();
+            updateDesignRibbonState();
+            updateQuickSaveState();
+            status.textContent = 'Table design changes discarded';
+        }
+
         async function saveDesign({ promptForConfirmation = true } = {}) {
             const changes = designChanges();
             if (!isDirty()) return true;
+            const descriptions = changes.map(change => {
+                if (change.deleted) return `Delete ${change.originalName} (all values in this field will be lost)`;
+                if (change.isNew) return `Add ${change.name} as ${change.type}`;
+                const original = originalColumns.find(column => column.originalName === change.originalName);
+                const parts = [];
+                if (change.name !== change.originalName) parts.push(`rename to ${change.name}`);
+                if (original && change.type !== original.type) parts.push(`convert ${original.type} to ${change.type}; incompatible values may be lost`);
+                return parts.length ? `${change.originalName}: ${parts.join(', ')}` : `Update properties for ${change.name}`;
+            });
+            const nextPrimaryKey = visibleColumns().find(column => column.primaryKey)?.name || '';
+            if (orderChanged()) descriptions.push('Reorder fields');
+            if (nextPrimaryKey && nextPrimaryKey !== tableDef.structure.primaryKey) {
+                descriptions.unshift(`Move the primary key from ${tableDef.structure.primaryKey || '(none)'} to ${nextPrimaryKey}`);
+            }
+            if (promptForConfirmation) {
+                const destructive = changes.some(change => change.deleted || (!change.isNew && originalColumns.find(column => column.originalName === change.originalName)?.type !== change.type));
+                const decision = await showDesignSaveDialog(tableName, descriptions.length ? descriptions : ['Update table properties'], destructive);
+                if (decision === 'discard') {
+                    discardDesignChanges();
+                    return true;
+                }
+                if (decision !== 'save') return false;
+            }
             try {
                 for (const column of visibleColumns().filter(column => column.type === 'Calculated Field')) {
                     window.ExpressionBuilder.compile(column.calculatedJavascript);
@@ -597,26 +728,6 @@ function initDesignViews(db) {
                 await showMessageDialog({ title: 'Duplicate Field Name', message: 'Every field must have a unique name.', confirmText: 'OK' });
                 return false;
             }
-            const descriptions = changes.map(change => {
-                if (change.deleted) return `Delete ${change.originalName} (all values in this field will be lost)`;
-                if (change.isNew) return `Add ${change.name} as ${change.type}`;
-                const original = originalColumns.find(column => column.originalName === change.originalName);
-                const parts = [];
-                if (change.name !== change.originalName) parts.push(`rename to ${change.name}`);
-                if (original && change.type !== original.type) parts.push(`convert ${original.type} to ${change.type}; incompatible values may be lost`);
-                return parts.length ? `${change.originalName}: ${parts.join(', ')}` : `Update properties for ${change.name}`;
-            });
-            const nextPrimaryKey = visibleColumns().find(column => column.primaryKey)?.name || '';
-            if (orderChanged()) descriptions.push('Reorder fields');
-            if (nextPrimaryKey && nextPrimaryKey !== tableDef.structure.primaryKey) {
-                descriptions.unshift(`Move the primary key from ${tableDef.structure.primaryKey || '(none)'} to ${nextPrimaryKey}`);
-            }
-            if (promptForConfirmation) {
-                const destructive = changes.some(change => change.deleted || (!change.isNew && originalColumns.find(column => column.originalName === change.originalName)?.type !== change.type));
-                const decision = await showDesignSaveDialog(tableName, descriptions.length ? descriptions : ['Update table properties'], destructive);
-                if (decision === 'discard') return true;
-                if (decision !== 'save') return false;
-            }
             try {
                 status.textContent = 'Saving table design...';
                 const response = await postSchemaAction({
@@ -624,7 +735,7 @@ function initDesignViews(db) {
                     table: tableName,
                     columns: changes,
                     columnOrder: visibleColumns().map(column => column.name),
-                    primaryKey: visibleColumns().find(column => column.primaryKey)?.name || '',
+                    primaryKey: visibleColumns().filter(column => column.primaryKey).length > 1 ? '' : visibleColumns().find(column => column.primaryKey)?.name || '',
                     originalPrimaryKey: tableDef.structure.primaryKey || '',
                     tableProperties
                 });
@@ -639,6 +750,7 @@ function initDesignViews(db) {
                 renderFieldProperties();
                 updateQuickSaveState();
                 databasePromise = null;
+                void refreshManagementState();
                 status.textContent = 'Table design saved';
                 return true;
             } catch (error) {
@@ -662,14 +774,7 @@ function initDesignViews(db) {
                 ]
             });
             if (decision === 'abandon') {
-                columns.splice(0, columns.length, ...cloneDesignValue(originalColumns));
-                Object.keys(tableProperties).forEach(key => delete tableProperties[key]);
-                Object.assign(tableProperties, cloneDesignValue(originalTableProperties));
-                selectedIndex = Math.min(selectedIndex, Math.max(0, columns.length - 1));
-                renderRows();
-                renderFieldProperties();
-                renderPropertySheet();
-                updateDesignRibbonState();
+                discardDesignChanges();
                 return true;
             }
             if (decision !== 'apply') return false;
@@ -685,7 +790,7 @@ function initDesignViews(db) {
         }
 
         view.innerHTML = `<div class="table-design-layout"><div class="table-design-main"><div class="table-design-grid-wrap">
-            <table class="acaciadb-grid design-grid"><thead><tr><th class="row-head"></th><th>Field Name</th><th>Data Type</th><th>Collation</th><th>Attributes</th><th>Description (Optional)</th></tr></thead><tbody data-design-body></tbody></table>
+            <table class="acaciadb-grid design-grid"><thead><tr><th class="row-head"></th><th>Field Name</th><th>Data Type</th><th>Description (Optional)</th></tr></thead><tbody data-design-body></tbody></table>
             </div><section class="field-properties"><div class="field-properties-title">Field Properties</div><div class="field-properties-body"><div class="field-properties-editor">
             <div class="field-tabs"><button type="button" class="active" data-field-tab="general">General</button><button type="button" data-field-tab="lookup">Lookup</button></div><div class="property-grid" data-field-property-grid></div>
             </div><p class="field-property-help" data-field-property-help></p></div></section></div>
@@ -698,9 +803,12 @@ function initDesignViews(db) {
         updateDesignRibbonState();
 
         view.addEventListener('click', async event => {
+            const managementButton = event.target.closest('[data-manage-schema]');
+            if (managementButton) { await openManagement(managementButton.dataset.manageSchema); return; }
             const row = event.target.closest('[data-design-row]');
             if (row) selectDesignRow(Number(row.dataset.designRow));
             const builder = event.target.closest('[data-field-builder]');
+            if (builder?.dataset.fieldBuilder === 'lookup') await modifySelectedLookup();
             if (builder?.dataset.fieldBuilder === 'validation') void openValidationRuleBuilder();
             if (builder?.dataset.fieldBuilder === 'input-mask') void openInputMaskWizard();
             if (builder?.dataset.fieldBuilder === 'calculated') void openCalculatedValueBuilder();
@@ -755,7 +863,10 @@ function initDesignViews(db) {
                             column.lookup.displayColumns = fields.split(',').map(item => item.trim()).filter(Boolean);
                             column.lookup.selectedFields = [...column.lookup.displayColumns];
                         } else {
-                            column.lookup.source = value.split(';').map(item => item.trim()).filter(Boolean);
+                            try {
+                                column.lookup.source = parseDesignLookupValues(value);
+                                event.target.setCustomValidity('');
+                            } catch (error) { event.target.setCustomValidity(error.message); event.target.reportValidity(); }
                         }
                     }
                     else if (key === 'allowMultiple') column.lookup.mode = value === 'Yes' ? 'multiple' : 'single';
@@ -786,6 +897,11 @@ function initDesignViews(db) {
         });
 
         view.addEventListener('change', async event => {
+            if (event.target.dataset.schemaProperty) {
+                await changeTableProperty(event.target.dataset.schemaProperty, event.target.value);
+                return;
+            }
+            if (event.target.dataset.fieldProperty === 'mysqlType') renderFieldProperties();
             if (event.target.dataset.fieldProperty === 'sqlDefaultMode') {
                 const column = selectedColumn();
                 const mode = event.target.value;
@@ -807,7 +923,7 @@ function initDesignViews(db) {
             column.mysqlType = native ? typeSelect.value.slice(4) : mysqlFieldTypeLabel(column.type).replace(/ \(.+\)$/, '');
             const size = column.mysqlType.match(/^(?:VAR)?(?:CHAR|BINARY)\((\d+)\)/i);
             column.fieldSize = size ? Number(size[1]) : null;
-            if (!designLookupTypes.has(column.type)) column.lookup = null;
+            if (designLookupDisabledReason(column)) column.lookup = null;
             renderRows();
             renderFieldProperties();
         });
@@ -864,6 +980,7 @@ function initDesignViews(db) {
             if (!event.target.closest('.design-row-menu')) document.querySelector('.design-row-menu')?.remove();
         });
 
+        void refreshManagementState();
         window.acaciadbActiveDesignController = {
             tableName,
             isDirty,
@@ -871,6 +988,8 @@ function initDesignViews(db) {
             confirmClose,
             togglePropertySheet,
             openIndexesDialog,
+            openForeignKeysDialog: () => openManagement('foreign'),
+            openPrimaryKeyDialog: () => openManagement('primary'),
             insertSelectedField: () => insertField(selectedIndex - 1),
             deleteSelectedField: () => deleteField(selectedIndex),
             modifySelectedLookup,

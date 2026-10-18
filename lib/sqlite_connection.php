@@ -43,6 +43,7 @@ final class SQLiteConnection
 
     public function prepare(string $sql): SQLiteStatement { return new SQLiteStatement($this, $sql); }
     public function query(string $sql): SQLiteResult { return $this->execute($sql); }
+    public function invalidateCatalog(): void { $this->catalogFresh = false; }
     public function real_escape_string(string $value): string { return str_replace("'", "''", $value); }
     public static function identifier(string $name): string { return '"' . str_replace('"', '""', $name) . '"'; }
     private static function unquote(string $name): string {

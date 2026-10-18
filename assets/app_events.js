@@ -76,6 +76,12 @@ document.addEventListener('click', async event => {
         return;
     }
 
+    const sortCommand = event.target.closest('[data-command="sort-asc"], [data-command="sort-desc"], [data-command="remove-sort"]');
+    if (sortCommand && !sortCommand.disabled && isTableDatasheetView(currentView)) {
+        await window.acaciadbActiveTableController?.sortRecords?.({ 'sort-asc': 'asc', 'sort-desc': 'desc', 'remove-sort': 'none' }[sortCommand.dataset.command]);
+        return;
+    }
+
     const propertySheetCommand = event.target.closest('[data-command="properties"]');
     if (propertySheetCommand && (isTableDesignView(currentView) || currentView.startsWith('design-form-'))) {
         if (isTableDesignView(currentView) && window.acaciadbActiveDesignController?.togglePropertySheet) {
@@ -87,9 +93,10 @@ document.addEventListener('click', async event => {
     }
 
     const designCommand = event.target.closest('.table-design-ribbon [data-command]');
-    if (designCommand && isTableDesignView(currentView) && !designCommand.disabled && ['index', 'insert-row', 'delete', 'lookup', 'primary-key'].includes(designCommand.dataset.command)) {
+    if (designCommand && isTableDesignView(currentView) && !designCommand.disabled && ['index', 'relationships', 'insert-row', 'delete', 'lookup', 'primary-key'].includes(designCommand.dataset.command)) {
         const controller = window.acaciadbActiveDesignController;
-        if (designCommand.dataset.command === 'index') controller?.openIndexesDialog?.();
+        if (designCommand.dataset.command === 'index') await controller?.openIndexesDialog?.();
+        if (designCommand.dataset.command === 'relationships') await controller?.openForeignKeysDialog?.();
         if (designCommand.dataset.command === 'insert-row') controller?.insertSelectedField?.();
         if (designCommand.dataset.command === 'delete') controller?.deleteSelectedField?.();
         if (designCommand.dataset.command === 'lookup') await controller?.modifySelectedLookup?.();

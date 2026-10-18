@@ -93,6 +93,42 @@ try:
     for invalid in [{'sqlDefaultMode': 'current_timestamp'}, {'collation': 'not_a_real_collation'}, {'sqlAttribute': 'UNSIGNED'}]:
         request('schema.php', {'action': 'applyDesignChanges', 'table': 'Types', 'columns': [
             {'originalName': 'default_text', 'name': 'default_text', 'type': 'Short Text', 'mysqlType': 'VARCHAR(255)', **invalid}]}, ok=False)
+    state = schema('getTableManagement')['management']
+    assert state['autoColumn'] == 'ID', state
+    schema('saveIndex', name='title_ratio', type='INDEX', columns=[{'name': 'renamed_title'}, {'name': 'ratio', 'direction': 'DESC'}])
+    state = schema('getTableManagement')['management']
+    index = next(i for i in state['indexes'] if i['name'] == 'title_ratio')
+    assert len(index['columns']) == 2 and index['columns'][1]['direction'] == 'DESC', index
+    schema('saveIndex', originalName='title_ratio', name='renamed_index', type='UNIQUE', columns=[{'name': 'renamed_title'}])
+    state = schema('getTableManagement')['management']
+    assert any(i['name'] == 'renamed_index' and i['type'] == 'UNIQUE' for i in state['indexes'])
+    assert not any(i['name'] == 'title_ratio' for i in state['indexes'])
+    request('schema.php', {'action': 'saveIndex', 'table': 'Types', 'originalName': 'renamed_index', 'name': 'bad', 'type': 'INDEX', 'columns': [{'name': 'not_a_field'}]}, ok=False)
+    assert any(i['name'] == 'renamed_index' for i in schema('getTableManagement')['management']['indexes'])
+    schema('deleteIndex', originalName='renamed_index', name='renamed_index', type='UNIQUE')
+    schema('configureAutoIncrement', column='ID', enabled=True, next='1000')
+    inserted = request('records.php', {'action': 'insert', 'table': 'Types', 'row': {'renamed_title': 'aaa'}})['row']
+    assert int(inserted['ID']) == 1000, inserted
+    first = request('view.php?view=table-types&limit=1&sortColumn=renamed_title&sortDirection=asc')['view']['data']['tables']['Types']['data']
+    last = request('view.php?view=table-types&limit=1&sortColumn=renamed_title&sortDirection=desc')['view']['data']['tables']['Types']['data']
+    assert first[0]['renamed_title'] == 'aaa' and last[0]['renamed_title'] == 'x' * 512, (first, last)
+    request('view.php?view=table-types&sortColumn=missing&sortDirection=asc', ok=False)
+    request('schema.php', {'action': 'configureAutoIncrement', 'table': 'Types', 'column': 'ID', 'enabled': True, 'next': '1'}, ok=False)
+    schema('addColumn', name='manual_lookup', type='Short Text', mysqlType='VARCHAR(512)')
+    pairs = [{'key': '9007199254740993', 'value': 'Large ID'}, {'key': 'two', 'value': 'Second'}]
+    schema('applyDesignChanges', columns=[{'originalName': 'manual_lookup', 'name': 'manual_lookup', 'type': 'Short Text', 'mysqlType': 'VARCHAR(512)',
+        'lookup': {'kind': 'static', 'mode': 'single', 'columns': 2, 'keyColumn': 'Col1', 'displayColumns': ['Col2'], 'source': pairs, 'limitToList': False}}])
+    refreshed = request('view.php?view=design-types')['view']['data']['tables']['Types']['structure']['columns']
+    lookup_column = next(c for c in refreshed if c['name'] == 'manual_lookup')
+    assert lookup_column['mysqlType'] == 'VARCHAR(512)' and lookup_column['lookup']['source'] == pairs, lookup_column
+    for value in ['9007199254740993', 'free input']:
+        row = request('records.php', {'action': 'insert', 'table': 'Types', 'row': {'manual_lookup': value}})['row']
+        assert row['manual_lookup'] == value, row
+    print('PASS: Design lookup save/reload, key/value pairs, original SQL type, large keys, and free values.')
+    renamed = schema('saveTableOptions', name='RenamedTypes')
+    assert renamed['table'] == 'RenamedTypes' and renamed['management']['name'] == 'RenamedTypes'
+    assert next(c for c in renamed['payload']['structure']['columns'] if c['name'] == 'renamed_title')['validationJavascript'] == rule
+    print('PASS: Composite index create/edit/delete, invalid edit preservation, next AUTO_INCREMENT, server sorting, and table rename.')
     print('PASS: Connection collations, default values, NULL/None, timestamps, and incompatible settings.')
     print('PASS: API create, resize, design save, ENUM/SET/BLOB, decimal data preservation, invalid type rejection.')
 finally:

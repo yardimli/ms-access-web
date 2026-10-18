@@ -105,11 +105,12 @@ function ensure_autonumber_primary_key(mysqli|SQLiteConnection $db, string $tabl
 
 function refresh_table_response(mysqli|SQLiteConnection $db, string $tableName, ?array $row = null, int $skip = 0, int $limit = 500): void
 {
+    global $request;
     json_response([
         'ok' => true,
         'table' => $tableName,
         'row' => $row,
-        'payload' => fetch_table_payload($db, $tableName, true, $skip, $limit),
+        'payload' => fetch_table_payload($db, $tableName, true, $skip, $limit, (string) ($request['sortColumn'] ?? ''), (string) ($request['sortDirection'] ?? 'none')),
     ]);
 }
 
@@ -236,7 +237,7 @@ try {
     }
 
     [$columns, $primaryKey] = fetch_table_columns($db, $resolvedTable);
-    if ($db instanceof SQLiteConnection && in_array($action, ['update', 'delete'], true)
+    if (in_array($action, ['update', 'delete'], true)
         && count(array_filter($columns, fn ($column) => !empty($column['primaryKey']))) !== 1) {
         throw new RuntimeException('Editing or deleting existing records requires a single-column primary key. Add one in Design View first.');
     }

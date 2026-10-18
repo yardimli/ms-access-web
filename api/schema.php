@@ -2,6 +2,7 @@
 
 require_once __DIR__ . '/../lib/acaciadb_data.php';
 require_once __DIR__ . '/../lib/sql_types.php';
+require_once __DIR__ . '/../lib/table_management.php';
 
 function schema_request(): array
 {
@@ -16,7 +17,10 @@ function schema_table_payload(mysqli|SQLiteConnection $db, string $tableName, ar
         (int) ($request['skip'] ?? 0),
         (int) ($request['limit'] ?? 500)
     );
-    return fetch_table_payload($db, $tableName, true, $skip, $limit);
+    $sortColumn = (string) ($request['sortColumn'] ?? '');
+    if (($request['action'] ?? '') === 'renameColumn' && $sortColumn === ($request['oldName'] ?? null)) $sortColumn = (string) $request['newName'];
+    if ($sortColumn !== '' && !column_exists($db, $tableName, $sortColumn)) $sortColumn = '';
+    return fetch_table_payload($db, $tableName, true, $skip, $limit, $sortColumn, (string) ($request['sortDirection'] ?? 'none'));
 }
 
 function validate_field_name(string $name): string
@@ -624,6 +628,12 @@ try {
         throw new RuntimeException('Table was not found.');
     }
 
+    if (in_array($action, ['getTableManagement', 'saveIndex', 'deleteIndex', 'saveForeignKey', 'deleteForeignKey', 'configureAutoIncrement', 'saveTableOptions'], true)) {
+        if ($action !== 'getTableManagement') $resolvedTable = apply_table_management($db, $resolvedTable, $request);
+        json_response(['ok' => true, 'table' => $resolvedTable, 'management' => table_management_state($db, $resolvedTable), 'payload' => fetch_table_payload($db, $resolvedTable, false)]);
+        exit;
+    }
+
     if ($action === 'applyDesignChanges') {
         $changes = is_array($request['columns'] ?? null) ? $request['columns'] : [];
         $requestedPrimaryKey = trim((string) ($request['primaryKey'] ?? ''));
@@ -701,7 +711,7 @@ try {
                 }
                 $isPrimary = fetch_column_key($db, $resolvedTable, $originalName) === 'PRI';
                 $currentType = strtoupper((string) $definition['column_type']);
-                if ($isPrimary && $requestedPrimaryKey === $currentPrimaryKey && ($name !== $originalName || $acaciadbType !== 'AutoNumber')) {
+                if ($isPrimary && $requestedPrimaryKey === $currentPrimaryKey && ($name !== $originalName || strtoupper($newMysqlType) !== $currentType)) {
                     throw new RuntimeException('The primary key name and data type cannot be changed in Design View.');
                 }
                 if ($name !== $originalName && column_exists($db, $resolvedTable, $name)) {

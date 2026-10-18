@@ -151,6 +151,31 @@ function lookupOptionLabel(option) {
     return typeof option === 'object' && option !== null ? String(option.value) : String(option);
 }
 
+function createSingleLookupInput(lookup, current, editor) {
+    const freeInput = lookup.kind === 'static' && lookup.limitToList === false;
+    const input = document.createElement(freeInput ? 'input' : 'select');
+    input.className = 'cell-edit-input';
+    const options = lookup.source || [];
+    if (freeInput) {
+        input.type = 'text';
+        const list = document.createElement('datalist');
+        list.id = 'active-cell-lookup-values';
+        list.innerHTML = options.map(option => `<option value="${escapeHtml(lookupOptionValue(option))}">${escapeHtml(lookupOptionLabel(option))}</option>`).join('');
+        editor.appendChild(list);
+        input.setAttribute('list', list.id);
+        input.value = current;
+    } else {
+        input.innerHTML = `<option value=""></option>${options.map(option => {
+            const value = lookupOptionValue(option);
+            return `<option value="${escapeHtml(value)}" ${value === current ? 'selected' : ''}>${escapeHtml(lookupOptionLabel(option))}</option>`;
+        }).join('')}`;
+        if (current && !options.some(option => lookupOptionValue(option) === current)) {
+            input.innerHTML += `<option value="${escapeHtml(current)}" selected>${escapeHtml(current)}</option>`;
+        }
+    }
+    return input;
+}
+
 function editorValue(activeEditor) {
     if (activeEditor.htmlMode) {
         return sanitizeHtmlText(activeEditor.input.innerHTML);
@@ -318,13 +343,8 @@ function enableEditableCells(container, rows, options = {}) {
             });
             editor.appendChild(toolbar);
         } else if (columnDef.lookup?.mode === 'single') {
-            input = document.createElement('select');
-            input.className = 'cell-edit-input';
             const current = isInsertRow || originalValue === '(New)' ? '' : String(originalValue ?? '');
-            input.innerHTML = `<option value=""></option>${(columnDef.lookup.source || []).map(option => {
-                const value = lookupOptionValue(option);
-                return `<option value="${escapeHtml(value)}" ${value === current ? 'selected' : ''}>${escapeHtml(lookupOptionLabel(option))}</option>`;
-            }).join('')}`;
+            input = createSingleLookupInput(columnDef.lookup, current, editor);
         } else if (columnDef.lookup?.mode === 'multiple') {
             input = document.createElement('input');
             input.type = 'hidden';

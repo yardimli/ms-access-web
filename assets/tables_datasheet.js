@@ -57,11 +57,6 @@ async function initTableViews(db) {
                 cursorColumnName = displayColumns[0]?.name || '';
             }
             cursorRowIndex = Math.max(0, Math.min(cursorRowIndex, rows.length));
-            if (sortState.direction === 'none') {
-                resetRowsToOriginalOrder(rows);
-            } else {
-                sortRowsByColumn(rows, sortState.column, sortState.direction);
-            }
             host.innerHTML = buildTableMarkup(tableDef, rows, {
                 allowAddColumn: true,
                 columns: displayColumns.map(column => column.name),
@@ -492,6 +487,17 @@ async function initTableViews(db) {
             }
         }
 
+        async function sortRecords(direction, column = activeColumnName) {
+            if (pageLoading || !closeActiveCellEditor(true)) return;
+            if (Object.keys(insertDraft).length && !await validateAndCommitInsertDraft()) return;
+            if (!await commitDirtyRow(cursorRowIndex)) return;
+            const previous = { ...sortState };
+            sortState.column = direction === 'none' ? null : column;
+            sortState.direction = direction;
+            if (await loadTablePage(0, pagination.limit)) savePrefs({ ...prefs, sortState: { ...sortState } });
+            else Object.assign(sortState, previous);
+        }
+
         async function loadTablePage(skip, limit) {
             if (pageLoading) {
                 return false;
@@ -505,7 +511,7 @@ async function initTableViews(db) {
 
             try {
                 const viewId = `table-${objectSlug(tableName)}`;
-                const response = await fetch(`api/view.php?view=${encodeURIComponent(viewId)}&skip=${requestedSkip}&limit=${requestedLimit}`, {
+                const response = await fetch(`api/view.php?view=${encodeURIComponent(viewId)}&skip=${requestedSkip}&limit=${requestedLimit}&sortColumn=${encodeURIComponent(sortState.column || '')}&sortDirection=${encodeURIComponent(sortState.direction)}`, {
                     headers: { 'X-Requested-With': 'XMLHttpRequest' },
                     cache: 'no-store'
                 });
@@ -1358,8 +1364,9 @@ async function initTableViews(db) {
             changeColumnFormat,
             setValidationRule,
             editValidationMessage,
-            getPageState: () => ({ skip: pagination.skip, limit: pagination.limit }),
+            getPageState: () => ({ skip: pagination.skip, limit: pagination.limit, sortColumn: sortState.column || '', sortDirection: sortState.direction }),
             syncPagination,
+            sortRecords,
             getExpressionContext: () => {
                 const column = columnByName(activeColumnName) || tableDef.structure.columns[0] || {};
                 return {
@@ -1553,15 +1560,7 @@ async function initTableViews(db) {
                 const column = sortButton.dataset.sortColumn;
                 setActiveColumn(column);
                 const current = sortState.column === column ? sortState.direction : 'none';
-                sortState.column = column;
-                sortState.direction = nextSortDirection(current);
-                if (sortState.direction === 'none') {
-                    sortState.column = null;
-                }
-                savePrefs({ ...prefs, sortState: { ...sortState } });
-                cursorRowIndex = 0;
-                renderTable();
-                updateCellCursor();
+                await sortRecords(nextSortDirection(current), column);
                 return;
             }
 
@@ -1839,6 +1838,7 @@ async function initTableViews(db) {
             }
             await loadTablePage(pageSkipInput?.value, pageLimitInput?.value);
         });
+        if (sortState.column && sortState.direction !== 'none') await loadTablePage(pagination.skip, pagination.limit);
     }
 }
 
